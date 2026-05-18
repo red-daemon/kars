@@ -1,0 +1,50 @@
+# Escenario MVP: carril único recto
+
+# Descripción del simulador
+simulation:
+  name: "MVP Single Lane"
+  description: "Un carril recto con N carros"
+  tick_dt_s: 0.05
+  target_fps: 30
+  random_seed: 42
+
+# Geometría del carril
+lane:
+  lane_id: "lane_seg0_0"
+  width_m: 2.7
+  speed_limit_kmh: 20.0
+  direction: "forward"
+  # Carril recto de 500m horizontalmente
+  waypoints:
+    - { x: 0,   y: 0,   heading: 0 }
+    - { x: 500, y: 0,   heading: 0 }
+
+# Parámetros iniciales de agentes
+agents:
+  initial_count: 20           # Número de carros al inicio
+  spawn_strategy: "random"    # "random" o "uniform"
+  spawn_region:
+    min_s: 50.0               # No spawnear en primeros 50m
+    max_s: 450.0              # Ni en últimos 50m
+
+# Configuración de comportamiento IDM por defecto
+idm_defaults:
+  desired_speed_kmh: 20.0
+  time_headway_s: 1.5
+  min_gap_m: 2.0
+  max_accel_ms2: 2.0
+  comfortable_decel_ms2: 2.0
+  speed_tolerance_kmh: 2.0    # +/-2 km/h de variación individual
+
+# Renderizado
+render:
+  enabled: true
+  window_width_px: 1200
+  window_height_px: 600
+  debug_overlay: true
+  camera_zoom_initial: 1.0
+
+# Estadísticas
+statistics:
+  collect: true
+  interval_ticks: 100         # Recolecta cada 100 ticks
