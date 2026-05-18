@@ -57,7 +57,10 @@ class SpeedChart:
 
         # Dibuja línea de datos
         if len(points) >= 2:
-            pygame.draw.lines(surface, config.COLOR_CHART_LINE, points, 2)
+            for i in range(len(points) - 1):
+                pygame.draw.line(surface, config.COLOR_CHART_LINE,
+                               (int(points[i][0]), int(points[i][1])),
+                               (int(points[i+1][0]), int(points[i+1][1])), 2)
 
         # Dibuja ejes
         # Eje horizontal (bottom)

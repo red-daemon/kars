@@ -80,17 +80,13 @@ class Renderer:
             screen_points = []
             for wx, wy in waypoints:
                 px, py = self.viewport.world_to_screen(Vector2(wx, wy))
-                screen_points.append((px, py))
-
-            # Dibuja road fill (relleno de carretera)
-            if len(screen_points) >= 2:
-                # Dibuja línea gruesa para simular ancho de carretera
-                width_px_scaled = int(width_m * config.SCALE_PX_PER_M * self.viewport.camera.zoom)
-                pygame.draw.lines(surface, config.COLOR_LANE_ROAD, screen_points, max(2, width_px_scaled))
+                screen_points.append((int(px), int(py)))
 
             # Dibuja línea central del carril
             if len(screen_points) >= 2:
-                pygame.draw.lines(surface, config.COLOR_LANE_BORDER, screen_points, 2)
+                for i in range(len(screen_points) - 1):
+                    pygame.draw.line(surface, config.COLOR_LANE_BORDER,
+                                   screen_points[i], screen_points[i+1], 2)
 
             # Dibuja bordes paralelos del carril (offsets laterales)
             # Esto se hace calculando normales a la polyline
@@ -124,14 +120,20 @@ class Renderer:
                 right_x = wx - nx * offset_m
                 right_y = wy - ny * offset_m
 
-                offset_points_left.append(self.viewport.world_to_screen(Vector2(left_x, left_y)))
-                offset_points_right.append(self.viewport.world_to_screen(Vector2(right_x, right_y)))
+                left_screen = self.viewport.world_to_screen(Vector2(left_x, left_y))
+                right_screen = self.viewport.world_to_screen(Vector2(right_x, right_y))
+                offset_points_left.append((int(left_screen[0]), int(left_screen[1])))
+                offset_points_right.append((int(right_screen[0]), int(right_screen[1])))
 
             # Dibuja bordes
             if len(offset_points_left) >= 2:
-                pygame.draw.lines(surface, config.COLOR_LANE_BORDER, offset_points_left, 1)
+                for i in range(len(offset_points_left) - 1):
+                    pygame.draw.line(surface, config.COLOR_LANE_BORDER,
+                                   offset_points_left[i], offset_points_left[i+1], 1)
             if len(offset_points_right) >= 2:
-                pygame.draw.lines(surface, config.COLOR_LANE_BORDER, offset_points_right, 1)
+                for i in range(len(offset_points_right) - 1):
+                    pygame.draw.line(surface, config.COLOR_LANE_BORDER,
+                                   offset_points_right[i], offset_points_right[i+1], 1)
 
         return surface
 
