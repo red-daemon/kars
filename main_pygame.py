@@ -19,13 +19,13 @@ def main():
     print("  KARS: INTERFAZ GRÁFICA INTERACTIVA")
     print("=" * 70)
 
-    # Crea entorno (carril único de 500m)
+    # Crea entorno (carril único de 1000m para que se vea completo)
     print("\n[Setup] Creando entorno...")
     lane = Lane(
         lane_id="lane_0",
         waypoints=[
             Waypoint(Vector2(0, 0), heading=0),
-            Waypoint(Vector2(500, 0), heading=0)
+            Waypoint(Vector2(1000, 0), heading=0)
         ],
         width_m=2.7,
         speed_limit_kmh=20.0,

@@ -57,9 +57,12 @@ class Renderer:
         self.lanes_cache_valid = False
 
         self.running = True
+        self.initial_zoom_done = False
 
     def _build_lanes_cache(self, snapshot: RenderSnapshot) -> pygame.Surface:
         """Construye una surface con todos los lanes dibujados.
+
+        Dibuja: margen verde → carretera gris → bordes blancos
 
         Args:
             snapshot: RenderSnapshot con información de lanes
@@ -67,9 +70,12 @@ class Renderer:
         Returns:
             pygame.Surface con lanes pre-renderizados
         """
-        # Crea surface del tamaño de la ventana
         surface = pygame.Surface((self.width_px, self.height_px))
-        surface.fill(config.BACKGROUND_COLOR)
+        surface.fill(config.BACKGROUND_COLOR)  # Fondo verde pasto
+
+        # Estructura de la calle urbana real:
+        # 100cm margen verde + 12cm franja blanca + 348cm gris carretera + 12cm franja blanca + 100cm margen verde
+        # Total: 5.72m de ancho
 
         # Dibuja cada lane
         for lane_id, waypoints, width_m in snapshot.lanes:
@@ -82,17 +88,21 @@ class Renderer:
                 px, py = self.viewport.world_to_screen(Vector2(wx, wy))
                 screen_points.append((int(px), int(py)))
 
-            # Dibuja línea central del carril
-            if len(screen_points) >= 2:
-                for i in range(len(screen_points) - 1):
-                    pygame.draw.line(surface, config.COLOR_LANE_BORDER,
-                                   screen_points[i], screen_points[i+1], 2)
+            # Estructura de la calle (desde center outward):
+            # margen_verde (1.0m) | franja_blanca (0.12m) | carretera_gris (3.48m) | franja_blanca (0.12m) | margen_verde (1.0m)
 
-            # Dibuja bordes paralelos del carril (offsets laterales)
-            # Esto se hace calculando normales a la polyline
-            offset_points_left = []
-            offset_points_right = []
-            offset_m = width_m / 2.0
+            half_road = config.LANE_WIDTH_M / 2.0  # 1.74m
+            margin_outer = config.ROAD_MARGIN_WIDTH_M + config.LANE_MARKING_WIDTH_M + half_road  # 1.0 + 0.12 + 1.74 = 2.86m
+            border_outer = half_road  # 1.74m
+            border_inner = half_road + config.LANE_MARKING_WIDTH_M  # 1.74 + 0.12 = 1.86m
+            margin_inner = config.ROAD_MARGIN_WIDTH_M + config.LANE_MARKING_WIDTH_M + half_road  # 2.86m
+
+            offset_margin_left = []   # Borde exterior del margen verde (izquierdo)
+            offset_border_left_outer = []  # Borde blanco exterior (izquierdo)
+            offset_border_left_inner = []  # Borde blanco interior (izquierdo)
+            offset_border_right_inner = []  # Borde blanco interior (derecho)
+            offset_border_right_outer = []  # Borde blanco exterior (derecho)
+            offset_margin_right = []  # Borde exterior del margen verde (derecho)
 
             for i, (wx, wy) in enumerate(waypoints):
                 # Calcula normal (perpendicular a la dirección)
@@ -101,12 +111,10 @@ class Renderer:
                     dx = next_wx - wx
                     dy = next_wy - wy
                 else:
-                    # Último punto: usa dirección del segmento anterior
                     prev_wx, prev_wy = waypoints[i - 1]
                     dx = wx - prev_wx
                     dy = wy - prev_wy
 
-                # Normal (perpendicular)
                 length = math.sqrt(dx*dx + dy*dy)
                 if length > 0:
                     nx = -dy / length
@@ -114,26 +122,71 @@ class Renderer:
                 else:
                     nx, ny = 0, 0
 
-                # Puntos offset
-                left_x = wx + nx * offset_m
-                left_y = wy + ny * offset_m
-                right_x = wx - nx * offset_m
-                right_y = wy - ny * offset_m
+                # Puntos desde center hacia la izquierda
+                margin_left_x = wx + nx * margin_outer
+                margin_left_y = wy + ny * margin_outer
+                border_left_outer_x = wx + nx * border_outer
+                border_left_outer_y = wy + ny * border_outer
+                border_left_inner_x = wx + nx * border_inner
+                border_left_inner_y = wy + ny * border_inner
 
-                left_screen = self.viewport.world_to_screen(Vector2(left_x, left_y))
-                right_screen = self.viewport.world_to_screen(Vector2(right_x, right_y))
-                offset_points_left.append((int(left_screen[0]), int(left_screen[1])))
-                offset_points_right.append((int(right_screen[0]), int(right_screen[1])))
+                # Puntos desde center hacia la derecha
+                border_right_inner_x = wx - nx * border_inner
+                border_right_inner_y = wy - ny * border_inner
+                border_right_outer_x = wx - nx * border_outer
+                border_right_outer_y = wy - ny * border_outer
+                margin_right_x = wx - nx * margin_outer
+                margin_right_y = wy - ny * margin_outer
 
-            # Dibuja bordes
-            if len(offset_points_left) >= 2:
-                for i in range(len(offset_points_left) - 1):
-                    pygame.draw.line(surface, config.COLOR_LANE_BORDER,
-                                   offset_points_left[i], offset_points_left[i+1], 1)
-            if len(offset_points_right) >= 2:
-                for i in range(len(offset_points_right) - 1):
-                    pygame.draw.line(surface, config.COLOR_LANE_BORDER,
-                                   offset_points_right[i], offset_points_right[i+1], 1)
+                # Convierte a pantalla
+                offset_margin_left.append(self.viewport.world_to_screen(Vector2(margin_left_x, margin_left_y)))
+                offset_border_left_outer.append(self.viewport.world_to_screen(Vector2(border_left_outer_x, border_left_outer_y)))
+                offset_border_left_inner.append(self.viewport.world_to_screen(Vector2(border_left_inner_x, border_left_inner_y)))
+                offset_border_right_inner.append(self.viewport.world_to_screen(Vector2(border_right_inner_x, border_right_inner_y)))
+                offset_border_right_outer.append(self.viewport.world_to_screen(Vector2(border_right_outer_x, border_right_outer_y)))
+                offset_margin_right.append(self.viewport.world_to_screen(Vector2(margin_right_x, margin_right_y)))
+
+            # Dibuja polígonos rellenos (strips) de cada sección de la calle
+            # Estructura: verde margen | blanco borde | gris carretera | blanco borde | verde margen
+
+            # Helper: crea un strip (quad) entre dos líneas paralelas
+            def draw_strip(surface, color, left_line, right_line, min_width_px=2):
+                """Dibuja un polígono entre dos líneas paralelas.
+
+                min_width_px: ancho mínimo en píxeles para asegurar visibilidad
+                """
+                if len(left_line) < 2 or len(right_line) < 2:
+                    return
+                for i in range(len(left_line) - 1):
+                    p1 = (int(left_line[i][0]), int(left_line[i][1]))
+                    p2 = (int(left_line[i+1][0]), int(left_line[i+1][1]))
+                    p3 = (int(right_line[i+1][0]), int(right_line[i+1][1]))
+                    p4 = (int(right_line[i][0]), int(right_line[i][1]))
+
+                    # Si el ancho es muy pequeño, usa líneas gruesas en su lugar
+                    width_px = abs(p1[0] - p4[0]) + abs(p1[1] - p4[1])
+                    if width_px < min_width_px:
+                        pygame.draw.line(surface, color, p1, p2, max(min_width_px, 2))
+                        pygame.draw.line(surface, color, p4, p3, max(min_width_px, 2))
+                    else:
+                        quad = [p1, p2, p3, p4]
+                        pygame.draw.polygon(surface, color, quad)
+
+            # Dibuja en orden (de outside in):
+            # 1. Margen gris izquierdo
+            draw_strip(surface, config.COLOR_ROAD_MARGIN, offset_margin_left, offset_border_left_outer)
+
+            # 2. Franja blanca exterior izquierda (fuerza mínimo 2px)
+            draw_strip(surface, config.COLOR_LANE_BORDER, offset_border_left_outer, offset_border_left_inner, min_width_px=2)
+
+            # 3. Carretera gris (el carril central)
+            draw_strip(surface, config.COLOR_LANE_ROAD, offset_border_left_inner, offset_border_right_inner)
+
+            # 4. Franja blanca exterior derecha (fuerza mínimo 2px)
+            draw_strip(surface, config.COLOR_LANE_BORDER, offset_border_right_inner, offset_border_right_outer, min_width_px=2)
+
+            # 5. Margen gris derecho
+            draw_strip(surface, config.COLOR_ROAD_MARGIN, offset_border_right_outer, offset_margin_right)
 
         return surface
 
@@ -192,10 +245,17 @@ class Renderer:
         pygame.draw.rect(self.screen, color, rect)
         pygame.draw.rect(self.screen, config.COLOR_TEXT, rect, 1)
 
-        # Dibuja ID del agente
+        # Dibuja ID del agente con color de contraste automático
         if config.DEBUG_OVERLAY_ENABLED:
+            # Calcula luminancia del color del carro
+            r, g, b = color
+            luminance = 0.299 * r + 0.587 * g + 0.114 * b
+
+            # Si el fondo es claro (luminancia > 127), usa texto negro; si es oscuro, usa blanco
+            text_color = (0, 0, 0) if luminance > 127 else (255, 255, 255)
+
             font_id = pygame.font.Font(None, 12)
-            text = font_id.render(f"{agent_id}", True, config.COLOR_TEXT)
+            text = font_id.render(f"{agent_id}", True, text_color)
             self.screen.blit(text, (screen_x - 5, screen_y - 5))
 
     def _find_agent_at_screen(self, snapshot: RenderSnapshot, mouse_pos: Tuple[int, int],
@@ -349,6 +409,25 @@ class Renderer:
         # Actualiza viewport (follow mode)
         snapshot = world.build_render_snapshot()
         self.viewport.update(snapshot, world.agents)
+
+        # Zoom-to-fit inicial (solo una vez)
+        if not self.initial_zoom_done and len(snapshot.lanes) > 0:
+            # Calcula bounds de todos los lanes
+            min_x, max_x = float('inf'), float('-inf')
+            min_y, max_y = float('inf'), float('-inf')
+            for lane_id, waypoints, width_m in snapshot.lanes:
+                for wx, wy in waypoints:
+                    min_x = min(min_x, wx)
+                    max_x = max(max_x, wx)
+                    min_y = min(min_y, wy)
+                    max_y = max(max_y, wy)
+            # Agrega margen
+            margin = 50  # metros
+            self.viewport.zoom_to_fit(min_x - margin, min_y - margin,
+                                     max_x + margin, max_y + margin)
+            # Zoom 10x adicional para ver detalles
+            self.viewport.camera.set_zoom(self.viewport.camera.zoom * 10.0)
+            self.initial_zoom_done = True
 
         # Actualiza HUD
         self.hud.update(snapshot, world)

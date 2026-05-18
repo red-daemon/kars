@@ -9,19 +9,26 @@ RENDER_TARGET_FPS = 30
 RENDER_SKIP_FRAMES = 1  # Renderiza cada N ticks
 
 # ============================================================================
-# ESCALA FÍSICA: metros ↔ píxeles
+# ESCALA FÍSICA: metros ↔ píxeles (ESCALA 2x: 40px por carro)
 # ============================================================================
 # Dimensiones reales y del sprite para calibración
 CAR_LENGTH_M = 4.5
 CAR_WIDTH_M = 1.8
-CAR_SPRITE_LENGTH_PX = 20
-CAR_SPRITE_WIDTH_PX = 10
+CAR_SPRITE_LENGTH_PX = 40  # Duplicado (fue 20)
+CAR_SPRITE_WIDTH_PX = 20   # Duplicado (fue 10)
 
-# Escala uniforme: 20px / 4.5m ≈ 4.44 px/m
+# Escala uniforme: 40px / 4.5m ≈ 8.89 px/m (el doble)
 SCALE_PX_PER_M = CAR_SPRITE_LENGTH_PX / CAR_LENGTH_M
 
-LANE_WIDTH_PX = 12
-LANE_WIDTH_M = LANE_WIDTH_PX / SCALE_PX_PER_M
+# Ancho del carril (gris de carretera): 3.48m (348cm)
+# Medido de centro de franja a centro de franja = 3.6m, menos las medias franjas
+LANE_WIDTH_M = 3.48
+
+# Franja blanca: 12cm (0.12m)
+LANE_MARKING_WIDTH_M = 0.12
+
+# Margen verde exterior: 100cm (1.0m) a cada lado
+ROAD_MARGIN_WIDTH_M = 1.0
 
 # ============================================================================
 # DINÁMICAS DEL VEHÍCULO
@@ -67,8 +74,8 @@ AGENT_SPAWN_MARGIN_M = 50.0
 # RENDERIZADO
 # ============================================================================
 WINDOW_WIDTH_PX = 1200
-WINDOW_HEIGHT_PX = 600
-BACKGROUND_COLOR = (25, 25, 25)
+WINDOW_HEIGHT_PX = 800
+BACKGROUND_COLOR = (34, 139, 34)  # Verde pasto oscuro (ForestGreen)
 FPS_DISPLAY = True
 DEBUG_OVERLAY_ENABLED = True
 
@@ -77,13 +84,14 @@ HUD_CHART_W = 200
 HUD_CHART_H = 80
 HUD_BAR_HEIGHT = 55  # Altura de la barra de controles (bottom)
 
-COLOR_CAR_DEFAULT = (100, 200, 100)
+COLOR_CAR_DEFAULT = (200, 50, 50)    # Rojo oscuro
 COLOR_CAR_LEADER = (200, 100, 100)
 COLOR_CAR_FAST = (255, 200, 0)       # Amarillo: agente a velocidad alta
-COLOR_CAR_SLOW = (200, 80, 80)       # Rojo: agente frenando
-COLOR_CAR_SELECTED = (100, 150, 255) # Azul: agente en follow mode
-COLOR_LANE_BORDER = (100, 100, 100)
-COLOR_LANE_ROAD = (60, 60, 60)       # Fill de carretera
+COLOR_CAR_SLOW = (100, 100, 200)     # Azul: agente lento/frenando
+COLOR_CAR_SELECTED = (255, 255, 0)   # Amarillo brillante: agente en follow mode
+COLOR_LANE_BORDER = (255, 255, 255)  # Blanco: franjas de demarcación
+COLOR_LANE_ROAD = (140, 140, 140)    # Gris claro: superficie de la carretera
+COLOR_ROAD_MARGIN = (140, 140, 140)  # Gris: margen alrededor del carril (mismo que carretera)
 COLOR_GRID = (50, 50, 50)
 COLOR_TEXT = (200, 200, 200)
 COLOR_HUD_BG = (15, 15, 15)          # Fondo de panels HUD

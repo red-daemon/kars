@@ -57,7 +57,10 @@ class PhysicsEngine:
     def clamp_acceleration(
         desired_accel_ms2: float, state: KinematicState, physics_body: PhysicsBody
     ) -> float:
-        """Limita aceleración deseada dentro de restricciones físicas."""
+        """Limita aceleración deseada dentro de restricciones físicas.
+
+        Nota: No permite marcha atrás. Aceleración está limitada a [0, max_accel].
+        """
         current_speed = state.speed_ms()
 
         if current_speed < 0:
@@ -66,4 +69,5 @@ class PhysicsEngine:
         if desired_accel_ms2 > 0:
             return min(desired_accel_ms2, physics_body.max_accel_ms2)
         else:
-            return max(desired_accel_ms2, -physics_body.max_decel_ms2)
+            # Limita a 0 (sin marcha atrás), no a -max_decel
+            return max(desired_accel_ms2, 0.0)
