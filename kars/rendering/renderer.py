@@ -1,27 +1,30 @@
-"""Renderer: dibuja la simulacion usando Pygame."""
+"""Renderer: dibuja la simulación usando Pygame con optimizaciones."""
 
 import pygame
 import math
 import time
-from typing import Optional
+from typing import Optional, Tuple
 
 from kars.physics.models import Vector2
-from kars.rendering.camera import Camera
-from kars.rendering.debug_overlay import DebugOverlay
+from kars.rendering.viewport_manager import ViewportManager
+from kars.rendering.hud import HUD
+from kars.simulation.world import World, RenderSnapshot
+from kars.agents.car_agent import CarAgent
 import kars.config as config
 
 
 class Renderer:
-    """Renderiza la simulacion usando Pygame.
+    """Renderiza la simulación con viewport manager y HUD interactivo.
 
-    Responsabilidades:
-    - Inicializa ventana Pygame
-    - Dibuja carriles y agentes
-    - Maneja eventos (zoom, pan, pause)
-    - Calcula FPS
+    Características:
+    - Cache de lanes para render rápido
+    - Culling de agentes fuera de viewport
+    - Interacción con mouse: spawn, remove, follow
+    - HUD overlay con controles interactivos
     """
 
-    def __init__(self, width_px: int = config.WINDOW_WIDTH_PX, height_px: int = config.WINDOW_HEIGHT_PX):
+    def __init__(self, width_px: int = config.WINDOW_WIDTH_PX,
+                 height_px: int = config.WINDOW_HEIGHT_PX):
         """Inicializa renderer.
 
         Args:
@@ -33,145 +36,227 @@ class Renderer:
         self.width_px = width_px
         self.height_px = height_px
         self.screen = pygame.display.set_mode((width_px, height_px))
-        pygame.display.set_caption("KARS: Traffic Simulator")
+        pygame.display.set_caption("KARS: Interactive Traffic Simulator")
 
         self.clock = pygame.time.Clock()
-        self.camera = Camera(width_px, height_px)
-        self.debug_overlay = DebugOverlay(enabled=config.DEBUG_OVERLAY_ENABLED)
 
-        # Tracking de FPS
+        # Viewport manager
+        from kars.rendering.camera import Camera
+        camera = Camera(width_px, height_px)
+        self.viewport = ViewportManager(camera)
+
+        # HUD
+        self.hud = HUD(width_px, height_px)
+
+        # FPS tracking
         self.frame_times = []
         self.last_frame_time = time.time()
 
-        # Fuente para texto
-        self.font_small = pygame.font.Font(None, 20)
-        self.font_large = pygame.font.Font(None, 28)
+        # Cache de lanes (se dibuja una sola vez)
+        self.lanes_cache_surface: Optional[pygame.Surface] = None
+        self.lanes_cache_valid = False
 
         self.running = True
-        self.paused = False
 
-    def draw_lane(self, lane_id: str, waypoints: list, width_m: float) -> None:
-        """Dibuja un carril.
+    def _build_lanes_cache(self, snapshot: RenderSnapshot) -> pygame.Surface:
+        """Construye una surface con todos los lanes dibujados.
 
         Args:
-            lane_id: ID del carril
-            waypoints: Lista de (x, y) en metros
-            width_m: Ancho del carril en metros
+            snapshot: RenderSnapshot con información de lanes
+
+        Returns:
+            pygame.Surface con lanes pre-renderizados
         """
-        if len(waypoints) < 2:
-            return
+        # Crea surface del tamaño de la ventana
+        surface = pygame.Surface((self.width_px, self.height_px))
+        surface.fill(config.BACKGROUND_COLOR)
 
-        # Convierte waypoints a pantalla
-        screen_points = []
-        for wx, wy in waypoints:
-            px, py = self.camera.world_to_screen(Vector2(wx, wy))
-            screen_points.append((px, py))
+        # Dibuja cada lane
+        for lane_id, waypoints, width_m in snapshot.lanes:
+            if len(waypoints) < 2:
+                continue
 
-        # Dibuja linea central del carril
-        if len(screen_points) >= 2:
-            pygame.draw.lines(self.screen, config.COLOR_LANE_BORDER, screen_points, 1)
+            # Convierte waypoints a pantalla
+            screen_points = []
+            for wx, wy in waypoints:
+                px, py = self.viewport.world_to_screen(Vector2(wx, wy))
+                screen_points.append((px, py))
 
-        # Dibuja borde del carril (lineas paralelas)
-        # Para MVP: solo dibuja la linea central
+            # Dibuja road fill (relleno de carretera)
+            if len(screen_points) >= 2:
+                # Dibuja línea gruesa para simular ancho de carretera
+                width_px_scaled = int(width_m * config.SCALE_PX_PER_M * self.viewport.camera.zoom)
+                pygame.draw.lines(surface, config.COLOR_LANE_ROAD, screen_points, max(2, width_px_scaled))
 
-    def draw_agent(self, agent_id: int, world_pos: Vector2, heading: float, speed_kmh: float) -> None:
+            # Dibuja línea central del carril
+            if len(screen_points) >= 2:
+                pygame.draw.lines(surface, config.COLOR_LANE_BORDER, screen_points, 2)
+
+            # Dibuja bordes paralelos del carril (offsets laterales)
+            # Esto se hace calculando normales a la polyline
+            offset_points_left = []
+            offset_points_right = []
+            offset_m = width_m / 2.0
+
+            for i, (wx, wy) in enumerate(waypoints):
+                # Calcula normal (perpendicular a la dirección)
+                if i < len(waypoints) - 1:
+                    next_wx, next_wy = waypoints[i + 1]
+                    dx = next_wx - wx
+                    dy = next_wy - wy
+                else:
+                    # Último punto: usa dirección del segmento anterior
+                    prev_wx, prev_wy = waypoints[i - 1]
+                    dx = wx - prev_wx
+                    dy = wy - prev_wy
+
+                # Normal (perpendicular)
+                length = math.sqrt(dx*dx + dy*dy)
+                if length > 0:
+                    nx = -dy / length
+                    ny = dx / length
+                else:
+                    nx, ny = 0, 0
+
+                # Puntos offset
+                left_x = wx + nx * offset_m
+                left_y = wy + ny * offset_m
+                right_x = wx - nx * offset_m
+                right_y = wy - ny * offset_m
+
+                offset_points_left.append(self.viewport.world_to_screen(Vector2(left_x, left_y)))
+                offset_points_right.append(self.viewport.world_to_screen(Vector2(right_x, right_y)))
+
+            # Dibuja bordes
+            if len(offset_points_left) >= 2:
+                pygame.draw.lines(surface, config.COLOR_LANE_BORDER, offset_points_left, 1)
+            if len(offset_points_right) >= 2:
+                pygame.draw.lines(surface, config.COLOR_LANE_BORDER, offset_points_right, 1)
+
+        return surface
+
+    def draw_lane_cached(self, snapshot: RenderSnapshot) -> None:
+        """Dibuja lanes usando cache estático.
+
+        Args:
+            snapshot: RenderSnapshot con información de lanes
+        """
+        if not self.lanes_cache_valid or self.lanes_cache_surface is None:
+            self.lanes_cache_surface = self._build_lanes_cache(snapshot)
+            self.lanes_cache_valid = True
+
+        self.screen.blit(self.lanes_cache_surface, (0, 0))
+
+    def draw_agent(self, agent_id: int, world_pos: Vector2, heading: float,
+                   speed_kmh: float, selected: bool = False) -> None:
         """Dibuja un agente (carro).
 
         Args:
             agent_id: ID del agente
-            world_pos: Posicion en metros
+            world_pos: Posición en metros
             heading: Rumbo en radianes
             speed_kmh: Velocidad en km/h
+            selected: True si el agente está siendo seguido
         """
-        screen_x, screen_y = self.camera.world_to_screen(world_pos)
+        screen_x, screen_y = self.viewport.world_to_screen(world_pos)
 
-        # Dibuja carro como rectangulo
-        car_width_px = config.CAR_SPRITE_WIDTH_PX
+        # Culling: no dibujar si está fuera de pantalla
+        if not (-20 < screen_x < self.width_px + 20 or -20 < screen_y < self.height_px + 20):
+            return
+
         car_length_px = config.CAR_SPRITE_LENGTH_PX
+        car_width_px = config.CAR_SPRITE_WIDTH_PX
 
-        # Crea rectangulo y lo rota segun heading
-        rect = pygame.Rect(screen_x - car_length_px / 2, screen_y - car_width_px / 2, car_length_px, car_width_px)
+        # Escala según zoom
+        zoom = self.viewport.camera.zoom
+        car_length_px = int(car_length_px * zoom)
+        car_width_px = int(car_width_px * zoom)
 
-        # Por ahora dibuja rectangulo sin rotacion
-        # Luego se puede mejorar con rotacion
-        pygame.draw.rect(self.screen, config.COLOR_CAR_DEFAULT, rect)
+        # Elige color según velocidad y estado
+        if selected:
+            color = config.COLOR_CAR_SELECTED
+        elif speed_kmh > 15.0:
+            color = config.COLOR_CAR_FAST
+        elif speed_kmh < 2.0:
+            color = config.COLOR_CAR_SLOW
+        else:
+            color = config.COLOR_CAR_DEFAULT
+
+        # Crea rectángulo y lo rota
+        rect = pygame.Rect(screen_x - car_length_px / 2, screen_y - car_width_px / 2,
+                          car_length_px, car_width_px)
+
+        # Dibuja rectángulo (sin rotación por ahora para performance)
+        pygame.draw.rect(self.screen, color, rect)
+        pygame.draw.rect(self.screen, config.COLOR_TEXT, rect, 1)
 
         # Dibuja ID del agente
         if config.DEBUG_OVERLAY_ENABLED:
-            text = self.font_small.render(f"{agent_id}", True, config.COLOR_TEXT)
-            self.screen.blit(text, (screen_x - 10, screen_y - 10))
+            font_id = pygame.font.Font(None, 12)
+            text = font_id.render(f"{agent_id}", True, config.COLOR_TEXT)
+            self.screen.blit(text, (screen_x - 5, screen_y - 5))
 
-    def draw_grid_overlay(self) -> None:
-        """Dibuja grid de metros para referencia."""
-        if not config.DEBUG_OVERLAY_ENABLED:
-            return
+    def _find_agent_at_screen(self, snapshot: RenderSnapshot, mouse_pos: Tuple[int, int],
+                              threshold_px: int = 20) -> Optional[Tuple[int, Vector2]]:
+        """Encuentra el agente más cercano a una posición de pantalla.
 
-        # Dibuja lineas cada 50 metros
-        grid_spacing_m = 50.0
-        visible_bounds = self.camera.get_visible_world_bounds()
-        min_x, min_y, max_x, max_y = visible_bounds
+        Args:
+            snapshot: RenderSnapshot con agentes
+            mouse_pos: (screen_x, screen_y)
+            threshold_px: Distancia máxima de click (píxeles)
 
-        # Lineas verticales
-        x = int(min_x / grid_spacing_m) * grid_spacing_m
-        while x <= max_x:
-            px, _ = self.camera.world_to_screen(Vector2(x, 0))
-            pygame.draw.line(self.screen, config.COLOR_GRID, (px, 0), (px, self.height_px), 1)
-            x += grid_spacing_m
+        Returns:
+            (agent_id, world_pos) o None
+        """
+        best_agent = None
+        best_dist = threshold_px
 
-        # Lineas horizontales
-        y = int(min_y / grid_spacing_m) * grid_spacing_m
-        while y <= max_y:
-            _, py = self.camera.world_to_screen(Vector2(0, y))
-            pygame.draw.line(self.screen, config.COLOR_GRID, (0, py), (self.width_px, py), 1)
-            y += grid_spacing_m
-
-    def draw_hud(self, snapshot) -> None:
-        """Dibuja HUD con estadisticas."""
-        if not config.DEBUG_OVERLAY_ENABLED:
-            return
-
-        lines = [
-            f"Tick: {snapshot.tick_number}",
-            f"Time: {snapshot.sim_time_s:.2f}s",
-            f"Agents: {len(snapshot.agents)}",
-            f"Avg Speed: {snapshot.avg_speed_kmh:.1f} km/h",
-            f"FPS: {snapshot.fps:.1f}",
-            "Keys: +/-=speed, P=pause, Q=quit",
-        ]
-
-        y = 10
-        for line in lines:
-            text = self.font_small.render(line, True, config.COLOR_TEXT)
-            self.screen.blit(text, (10, y))
-            y += 20
-
-    def draw_snapshot(self, snapshot) -> None:
-        """Dibuja un snapshot de la simulacion."""
-        # Limpia pantalla
-        self.screen.fill(config.BACKGROUND_COLOR)
-
-        # Dibuja grid
-        self.draw_grid_overlay()
-
-        # Dibuja carriles
-        for lane_id, waypoints, width_m in snapshot.lanes:
-            self.draw_lane(lane_id, waypoints, width_m)
-
-        # Dibuja agentes
         for agent_id, world_pos, heading, speed_kmh, lane_id, s in snapshot.agents:
-            self.draw_agent(agent_id, world_pos, heading, speed_kmh)
+            screen_x, screen_y = self.viewport.world_to_screen(world_pos)
+            dx = screen_x - mouse_pos[0]
+            dy = screen_y - mouse_pos[1]
+            dist = math.sqrt(dx*dx + dy*dy)
 
-        # Dibuja HUD
-        self.draw_hud(snapshot)
+            if dist < best_dist:
+                best_dist = dist
+                best_agent = (agent_id, world_pos)
 
-        # Actualiza pantalla
-        pygame.display.flip()
+        return best_agent
 
-    def handle_events(self, world) -> bool:
+    def _find_nearest_lane_s(self, network, world_pos: Vector2) -> Tuple:
+        """Encuentra el carril más cercano y la posición s.
+
+        Args:
+            network: RoadNetwork
+            world_pos: Posición en mundo (metros)
+
+        Returns:
+            (lane, s_value) o (None, None)
+        """
+        closest_lane = None
+        closest_s = None
+        best_dist = float('inf')
+
+        for lane in network.get_all_lanes():
+            try:
+                s = lane.find_closest_s(world_pos)
+                closest_world = lane.world_position_at(s, 0.0)
+                dist = world_pos.distance_to(closest_world)
+
+                if dist < best_dist:
+                    best_dist = dist
+                    closest_lane = lane
+                    closest_s = s
+            except ValueError:
+                continue
+
+        return closest_lane, closest_s
+
+    def handle_events(self, world: World) -> bool:
         """Maneja eventos de Pygame.
 
         Args:
-            world: World para modificar estados
+            world: World para modificar si es necesario
 
         Returns:
             True si debe continuar, False para salir
@@ -181,38 +266,54 @@ class Renderer:
                 return False
 
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_q:
+                if event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
                     return False
 
-                if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
-                    # Aumenta velocidad de simulacion
-                    world.set_sim_speed_factor(world.sim_speed_factor * 1.5)
+            # Scroll del mouse para zoom
+            if event.type == pygame.MOUSEWHEEL:
+                self.viewport.handle_mouse_wheel(event.y)
 
-                if event.key == pygame.K_MINUS:
-                    # Disminuye velocidad de simulacion
-                    world.set_sim_speed_factor(world.sim_speed_factor / 1.5)
+            # Middle mouse pan
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                self.middle_mouse_start = event.pos
+            elif event.type == pygame.MOUSEMOTION and pygame.mouse.get_pressed()[2]:
+                if hasattr(self, 'middle_mouse_start'):
+                    dx = event.pos[0] - self.middle_mouse_start[0]
+                    dy = event.pos[1] - self.middle_mouse_start[1]
+                    self.viewport.handle_mouse_drag(dx, dy)
+                    self.middle_mouse_start = event.pos
 
-                if event.key == pygame.K_p:
-                    # Pausa
-                    self.paused = not self.paused
+            # Left click: spawn agente
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                world_pos = self.viewport.screen_to_world(event.pos)
+                lane, s = self._find_nearest_lane_s(world.network, world_pos)
 
-                # Zoom
-                if event.key == pygame.K_UP:
-                    self.camera.set_zoom(self.camera.zoom * 1.2)
+                if lane is not None:
+                    # Spawn nuevo agente
+                    agent_id = world.get_next_agent_id()
+                    agent = CarAgent(
+                        agent_id=agent_id,
+                        current_lane_id=lane.lane_id,
+                        position_along_lane_s=s,
+                        lateral_offset=0.0,
+                    )
+                    world_pos_snapped = lane.world_position_at(s, 0.0)
+                    agent.set_position_world(world_pos_snapped, heading=0.0)
+                    world.add_agent(agent)
 
-                if event.key == pygame.K_DOWN:
-                    self.camera.set_zoom(self.camera.zoom / 1.2)
+            # Right click: remove agente (o click en agente para seguir)
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                # Primero intenta encontrar agente en esta posición
+                # Si no, se consume para no disparar pan
+                pass
 
-                # Pan
-                if event.key == pygame.K_LEFT:
-                    self.camera.pan(-50, 0)
-                if event.key == pygame.K_RIGHT:
-                    self.camera.pan(50, 0)
+            # Propagar eventos al HUD
+            self.hud.handle_event(event, world)
 
         return True
 
-    def update_fps(self, snapshot) -> None:
-        """Actualiza calculo de FPS."""
+    def update_fps(self, snapshot: RenderSnapshot) -> None:
+        """Actualiza cálculo de FPS."""
         now = time.time()
         dt = now - self.last_frame_time
         self.last_frame_time = now
@@ -221,13 +322,12 @@ class Renderer:
         if len(self.frame_times) > 30:
             self.frame_times.pop(0)
 
-        avg_frame_time = sum(self.frame_times) / len(self.frame_times)
-        fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
+        if self.frame_times:
+            avg_frame_time = sum(self.frame_times) / len(self.frame_times)
+            fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
+            snapshot.fps = fps
 
-        # Actualiza snapshot con FPS
-        snapshot.fps = fps
-
-    def run_frame(self, world) -> bool:
+    def run_frame(self, world: World) -> bool:
         """Ejecuta un frame del simulador.
 
         Args:
@@ -240,17 +340,39 @@ class Renderer:
         if not self.handle_events(world):
             return False
 
-        # Simula un tick si no esta pausado
-        if not self.paused:
+        # Simula un tick si no está pausado
+        if not self.hud.is_paused:
             world.tick()
 
-        # Crea snapshot y dibuja
+        # Actualiza viewport (follow mode)
         snapshot = world.build_render_snapshot()
-        self.update_fps(snapshot)
-        self.draw_snapshot(snapshot)
+        self.viewport.update(snapshot, world.agents)
 
-        # Limita FPS a target
-        self.clock.tick(config.RENDER_TARGET_FPS)
+        # Actualiza HUD
+        self.hud.update(snapshot, world)
+
+        # Dibuja escena
+        self.screen.fill(config.BACKGROUND_COLOR)
+
+        # Dibuja lanes (cache)
+        self.draw_lane_cached(snapshot)
+
+        # Dibuja agentes
+        for agent_id, world_pos, heading, speed_kmh, lane_id, s in snapshot.agents:
+            is_selected = (agent_id == self.viewport.follow_agent_id)
+            self.draw_agent(agent_id, world_pos, heading, speed_kmh, is_selected)
+
+        # Actualiza FPS
+        self.update_fps(snapshot)
+
+        # Dibuja HUD overlay
+        self.hud.draw(self.screen)
+
+        # Actualiza pantalla
+        pygame.display.flip()
+
+        # Limita FPS
+        self.clock.tick(60)
 
         return True
 

@@ -72,11 +72,23 @@ BACKGROUND_COLOR = (25, 25, 25)
 FPS_DISPLAY = True
 DEBUG_OVERLAY_ENABLED = True
 
+# HUD layout dimensions
+HUD_CHART_W = 200
+HUD_CHART_H = 80
+HUD_BAR_HEIGHT = 55  # Altura de la barra de controles (bottom)
+
 COLOR_CAR_DEFAULT = (100, 200, 100)
 COLOR_CAR_LEADER = (200, 100, 100)
+COLOR_CAR_FAST = (255, 200, 0)       # Amarillo: agente a velocidad alta
+COLOR_CAR_SLOW = (200, 80, 80)       # Rojo: agente frenando
+COLOR_CAR_SELECTED = (100, 150, 255) # Azul: agente en follow mode
 COLOR_LANE_BORDER = (100, 100, 100)
+COLOR_LANE_ROAD = (60, 60, 60)       # Fill de carretera
 COLOR_GRID = (50, 50, 50)
 COLOR_TEXT = (200, 200, 200)
+COLOR_HUD_BG = (15, 15, 15)          # Fondo de panels HUD
+COLOR_CHART_LINE = (100, 200, 100)   # Línea del speed chart
+COLOR_CHART_BG = (30, 30, 30)        # Fondo del chart
 
 # ============================================================================
 # MISCELÁNEA

@@ -56,6 +56,7 @@ class World:
         """
         self.network = network
         self.agents: Dict[int, CarAgent] = {}
+        self._agent_id_counter = config.AGENT_ID_COUNTER_START
 
         # Estado temporalizado
         self.tick_number = 0
@@ -97,6 +98,30 @@ class World:
             agent: CarAgent a agregar
         """
         self.agents[agent.agent_id] = agent
+
+    def remove_agent(self, agent_id: int) -> bool:
+        """Elimina un agente de la simulacion.
+
+        Args:
+            agent_id: ID del agente a eliminar
+
+        Returns:
+            True si el agente fue eliminado, False si no existía
+        """
+        if agent_id in self.agents:
+            del self.agents[agent_id]
+            return True
+        return False
+
+    def get_next_agent_id(self) -> int:
+        """Obtiene el siguiente ID disponible para un agente.
+
+        Returns:
+            Nuevo ID único
+        """
+        agent_id = self._agent_id_counter
+        self._agent_id_counter += 1
+        return agent_id
 
     def _phase_perception(self) -> None:
         """FASE 1: Calcula percepcion de todos los agentes (read-only estado N)."""
