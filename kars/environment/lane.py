@@ -21,6 +21,7 @@ class Lane:
     width_m: float = None
     speed_limit_kmh: float = None
     direction: str = "forward"  # "forward" o "backward"
+    zone: str = "urban"  # Tipo de zona para parámetros de tráfico
 
     # Campos computados
     _cumulative_distances: List[float] = field(default_factory=list, init=False, repr=False)

@@ -91,18 +91,24 @@ class Renderer:
             # Estructura de la calle (desde center outward):
             # margen_verde (1.0m) | franja_blanca (0.12m) | carretera_gris (3.48m) | franja_blanca (0.12m) | margen_verde (1.0m)
 
-            half_road = config.LANE_WIDTH_M / 2.0  # 1.74m
-            margin_outer = config.ROAD_MARGIN_WIDTH_M + config.LANE_MARKING_WIDTH_M + half_road  # 1.0 + 0.12 + 1.74 = 2.86m
-            border_outer = half_road  # 1.74m
-            border_inner = half_road + config.LANE_MARKING_WIDTH_M  # 1.74 + 0.12 = 1.86m
-            margin_inner = config.ROAD_MARGIN_WIDTH_M + config.LANE_MARKING_WIDTH_M + half_road  # 2.86m
+            half_road = config.LANE_WIDTH_M / 2.0  # 2.0m (borde del carril)
+            half_marking = config.LANE_MARKING_WIDTH_M / 2.0  # 0.1m
 
-            offset_margin_left = []   # Borde exterior del margen verde (izquierdo)
-            offset_border_left_outer = []  # Borde blanco exterior (izquierdo)
-            offset_border_left_inner = []  # Borde blanco interior (izquierdo)
-            offset_border_right_inner = []  # Borde blanco interior (derecho)
-            offset_border_right_outer = []  # Borde blanco exterior (derecho)
-            offset_margin_right = []  # Borde exterior del margen verde (derecho)
+            # Ancho total de la calle (márgenes + carril)
+            total_half_width = config.ROAD_MARGIN_WIDTH_M + half_road  # 0.8 + 2.0 = 2.8m
+
+            # Franjas: centradas en los bordes del carril
+            franja_inner_left = half_road - half_marking  # 2.0 - 0.1 = 1.9m
+            franja_outer_left = half_road + half_marking  # 2.0 + 0.1 = 2.1m
+            franja_inner_right = half_road - half_marking  # 2.0 - 0.1 = 1.9m
+            franja_outer_right = half_road + half_marking  # 2.0 + 0.1 = 2.1m
+
+            offset_street_left = []   # Borde izquierdo de la calle (gris)
+            offset_street_right = []  # Borde derecho de la calle (gris)
+            offset_stripe_left_inner = []  # Franja blanca izquierda, lado interior
+            offset_stripe_left_outer = []  # Franja blanca izquierda, lado exterior
+            offset_stripe_right_inner = []  # Franja blanca derecha, lado interior
+            offset_stripe_right_outer = []  # Franja blanca derecha, lado exterior
 
             for i, (wx, wy) in enumerate(waypoints):
                 # Calcula normal (perpendicular a la dirección)
@@ -122,29 +128,30 @@ class Renderer:
                 else:
                     nx, ny = 0, 0
 
-                # Puntos desde center hacia la izquierda
-                margin_left_x = wx + nx * margin_outer
-                margin_left_y = wy + ny * margin_outer
-                border_left_outer_x = wx + nx * border_outer
-                border_left_outer_y = wy + ny * border_outer
-                border_left_inner_x = wx + nx * border_inner
-                border_left_inner_y = wy + ny * border_inner
+                # CALLE COMPLETA (gris, incluye márgenes)
+                street_left_x = wx + nx * total_half_width
+                street_left_y = wy + ny * total_half_width
+                street_right_x = wx - nx * total_half_width
+                street_right_y = wy - ny * total_half_width
 
-                # Puntos desde center hacia la derecha
-                border_right_inner_x = wx - nx * border_inner
-                border_right_inner_y = wy - ny * border_inner
-                border_right_outer_x = wx - nx * border_outer
-                border_right_outer_y = wy - ny * border_outer
-                margin_right_x = wx - nx * margin_outer
-                margin_right_y = wy - ny * margin_outer
+                # FRANJAS BLANCAS (centradas en bordes del carril)
+                stripe_left_outer_x = wx + nx * franja_outer_left
+                stripe_left_outer_y = wy + ny * franja_outer_left
+                stripe_left_inner_x = wx + nx * franja_inner_left
+                stripe_left_inner_y = wy + ny * franja_inner_left
+
+                stripe_right_inner_x = wx - nx * franja_inner_right
+                stripe_right_inner_y = wy - ny * franja_inner_right
+                stripe_right_outer_x = wx - nx * franja_outer_right
+                stripe_right_outer_y = wy - ny * franja_outer_right
 
                 # Convierte a pantalla
-                offset_margin_left.append(self.viewport.world_to_screen(Vector2(margin_left_x, margin_left_y)))
-                offset_border_left_outer.append(self.viewport.world_to_screen(Vector2(border_left_outer_x, border_left_outer_y)))
-                offset_border_left_inner.append(self.viewport.world_to_screen(Vector2(border_left_inner_x, border_left_inner_y)))
-                offset_border_right_inner.append(self.viewport.world_to_screen(Vector2(border_right_inner_x, border_right_inner_y)))
-                offset_border_right_outer.append(self.viewport.world_to_screen(Vector2(border_right_outer_x, border_right_outer_y)))
-                offset_margin_right.append(self.viewport.world_to_screen(Vector2(margin_right_x, margin_right_y)))
+                offset_street_left.append(self.viewport.world_to_screen(Vector2(street_left_x, street_left_y)))
+                offset_street_right.append(self.viewport.world_to_screen(Vector2(street_right_x, street_right_y)))
+                offset_stripe_left_outer.append(self.viewport.world_to_screen(Vector2(stripe_left_outer_x, stripe_left_outer_y)))
+                offset_stripe_left_inner.append(self.viewport.world_to_screen(Vector2(stripe_left_inner_x, stripe_left_inner_y)))
+                offset_stripe_right_inner.append(self.viewport.world_to_screen(Vector2(stripe_right_inner_x, stripe_right_inner_y)))
+                offset_stripe_right_outer.append(self.viewport.world_to_screen(Vector2(stripe_right_outer_x, stripe_right_outer_y)))
 
             # Dibuja polígonos rellenos (strips) de cada sección de la calle
             # Estructura: verde margen | blanco borde | gris carretera | blanco borde | verde margen
@@ -172,23 +179,68 @@ class Renderer:
                         quad = [p1, p2, p3, p4]
                         pygame.draw.polygon(surface, color, quad)
 
-            # Dibuja en orden (de outside in):
-            # 1. Margen gris izquierdo
-            draw_strip(surface, config.COLOR_ROAD_MARGIN, offset_margin_left, offset_border_left_outer)
+            # Dibuja en orden:
+            # 1. CALLE COMPLETA (gris: márgenes + carril)
+            draw_strip(surface, config.COLOR_LANE_ROAD, offset_street_left, offset_street_right)
 
-            # 2. Franja blanca exterior izquierda (fuerza mínimo 2px)
-            draw_strip(surface, config.COLOR_LANE_BORDER, offset_border_left_outer, offset_border_left_inner, min_width_px=2)
+            # 2. FRANJA BLANCA IZQUIERDA (encima)
+            draw_strip(surface, config.COLOR_LANE_BORDER, offset_stripe_left_outer, offset_stripe_left_inner, min_width_px=2)
 
-            # 3. Carretera gris (el carril central)
-            draw_strip(surface, config.COLOR_LANE_ROAD, offset_border_left_inner, offset_border_right_inner)
-
-            # 4. Franja blanca exterior derecha (fuerza mínimo 2px)
-            draw_strip(surface, config.COLOR_LANE_BORDER, offset_border_right_inner, offset_border_right_outer, min_width_px=2)
-
-            # 5. Margen gris derecho
-            draw_strip(surface, config.COLOR_ROAD_MARGIN, offset_border_right_outer, offset_margin_right)
+            # 3. FRANJA BLANCA DERECHA (encima)
+            draw_strip(surface, config.COLOR_LANE_BORDER, offset_stripe_right_inner, offset_stripe_right_outer, min_width_px=2)
 
         return surface
+
+    def draw_distance_markers(self, snapshot: RenderSnapshot) -> None:
+        """Dibuja marcadores de distancia (inicio y final de pista).
+
+        Args:
+            snapshot: RenderSnapshot con información de lanes
+        """
+        if not snapshot.lanes:
+            return
+
+        lane_id, waypoints, width_m = snapshot.lanes[0]
+
+        # Calcula longitud total del carril
+        lane_length_m = sum(
+            math.sqrt((waypoints[i+1][0] - waypoints[i][0])**2 +
+                     (waypoints[i+1][1] - waypoints[i][1])**2)
+            for i in range(len(waypoints)-1)
+        )
+
+        # Puntos de inicio y final
+        start_pos = Vector2(waypoints[0][0], waypoints[0][1])
+        end_pos = Vector2(waypoints[-1][0], waypoints[-1][1])
+
+        # Convierte a pantalla
+        start_screen = self.viewport.world_to_screen(start_pos)
+        end_screen = self.viewport.world_to_screen(end_pos)
+
+        # Dibuja líneas verticales en inicio y final
+        line_color = (255, 100, 100)  # Rojo claro
+        line_height = 50
+
+        # Línea en inicio (0m)
+        pygame.draw.line(self.screen, line_color,
+                        (int(start_screen[0]), int(start_screen[1]) - line_height),
+                        (int(start_screen[0]), int(start_screen[1]) + line_height), 3)
+
+        # Línea en final (1000m)
+        pygame.draw.line(self.screen, line_color,
+                        (int(end_screen[0]), int(end_screen[1]) - line_height),
+                        (int(end_screen[0]), int(end_screen[1]) + line_height), 3)
+
+        # Etiquetas de distancia
+        font = pygame.font.Font(None, 18)
+
+        # "0m" en inicio
+        text_0 = font.render("0m", True, line_color)
+        self.screen.blit(text_0, (int(start_screen[0]) - 15, int(start_screen[1]) + line_height + 5))
+
+        # "1000m" en final
+        text_end = font.render(f"{lane_length_m:.0f}m", True, line_color)
+        self.screen.blit(text_end, (int(end_screen[0]) - 35, int(end_screen[1]) + line_height + 5))
 
     def draw_lane_cached(self, snapshot: RenderSnapshot) -> None:
         """Dibuja lanes usando cache estático.
@@ -203,7 +255,7 @@ class Renderer:
         self.screen.blit(self.lanes_cache_surface, (0, 0))
 
     def draw_agent(self, agent_id: int, world_pos: Vector2, heading: float,
-                   speed_kmh: float, selected: bool = False) -> None:
+                   speed_kmh: float, selected: bool = False, lane_s: float = None) -> None:
         """Dibuja un agente (carro).
 
         Args:
@@ -237,9 +289,17 @@ class Renderer:
         else:
             color = config.COLOR_CAR_DEFAULT
 
-        # Crea rectángulo y lo rota
-        rect = pygame.Rect(screen_x - car_length_px / 2, screen_y - car_width_px / 2,
-                          car_length_px, car_width_px)
+        # Crea rectángulo centrado con píxeles enteros
+        # Una mitad redondea hacia abajo, la otra hacia arriba para centrado perfecto
+        half_length_lower = car_length_px // 2
+        half_length_upper = car_length_px - half_length_lower
+        half_height_lower = car_width_px // 2
+        half_height_upper = car_width_px - half_height_lower
+
+        left = int(screen_x - half_length_lower)
+        top = int(screen_y - half_height_lower)
+        rect = pygame.Rect(left, top, car_length_px, car_width_px)
+
 
         # Dibuja rectángulo (sin rotación por ahora para performance)
         pygame.draw.rect(self.screen, color, rect)
@@ -331,19 +391,6 @@ class Renderer:
                 if event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
                     return False
 
-            # Scroll del mouse para zoom
-            if event.type == pygame.MOUSEWHEEL:
-                self.viewport.handle_mouse_wheel(event.y)
-
-            # Middle mouse pan
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-                self.middle_mouse_start = event.pos
-            elif event.type == pygame.MOUSEMOTION and pygame.mouse.get_pressed()[2]:
-                if hasattr(self, 'middle_mouse_start'):
-                    dx = event.pos[0] - self.middle_mouse_start[0]
-                    dy = event.pos[1] - self.middle_mouse_start[1]
-                    self.viewport.handle_mouse_drag(dx, dy)
-                    self.middle_mouse_start = event.pos
 
             # Left click: spawn agente
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -398,6 +445,8 @@ class Renderer:
         Returns:
             True si debe continuar, False para salir
         """
+        self.world = world  # Guarda referencia para acceso en draw_agent
+
         # Maneja eventos
         if not self.handle_events(world):
             return False
@@ -410,23 +459,33 @@ class Renderer:
         snapshot = world.build_render_snapshot()
         self.viewport.update(snapshot, world.agents)
 
-        # Zoom-to-fit inicial (solo una vez)
+        # Si no hay follow mode, centra en promedio de posiciones de agentes
+        if self.viewport.follow_agent_id is None and snapshot.agents:
+            avg_s = sum(s for _, _, _, _, _, s in snapshot.agents) / len(snapshot.agents)
+            lane = world.network.get_lane(snapshot.agents[0][4])
+            avg_world_pos = lane.world_position_at(avg_s, 0.0)
+            self.viewport.camera.center_on(avg_world_pos)
+
+        # Configuración inicial: centra en el carril (solo una vez)
         if not self.initial_zoom_done and len(snapshot.lanes) > 0:
-            # Calcula bounds de todos los lanes
-            min_x, max_x = float('inf'), float('-inf')
-            min_y, max_y = float('inf'), float('-inf')
-            for lane_id, waypoints, width_m in snapshot.lanes:
-                for wx, wy in waypoints:
-                    min_x = min(min_x, wx)
-                    max_x = max(max_x, wx)
-                    min_y = min(min_y, wy)
-                    max_y = max(max_y, wy)
-            # Agrega margen
-            margin = 50  # metros
-            self.viewport.zoom_to_fit(min_x - margin, min_y - margin,
-                                     max_x + margin, max_y + margin)
-            # Zoom 10x adicional para ver detalles
-            self.viewport.camera.set_zoom(self.viewport.camera.zoom * 10.0)
+            lane_id, waypoints, width_m = snapshot.lanes[0]
+            lane_length_m = sum(
+                math.sqrt((waypoints[i+1][0] - waypoints[i][0])**2 +
+                         (waypoints[i+1][1] - waypoints[i][1])**2)
+                for i in range(len(waypoints)-1)
+            )
+
+            # Aplica factor de escala para que la visualización sea correcta
+            # El viewport en el test mostraba bien con 3.0 px/m
+            # Aquí necesitamos ajustar según el tamaño de la ventana
+            self.viewport.camera.set_zoom(2.5)
+
+            # Centra en el inicio (primeros 300m del carril)
+            # El carril es horizontal en Y=0, no en Y=width/2
+            center_x = 150.0
+            center_y = 0.0
+            self.viewport.camera.center_on(Vector2(center_x, center_y))
+
             self.initial_zoom_done = True
 
         # Actualiza HUD
@@ -441,7 +500,20 @@ class Renderer:
         # Dibuja agentes
         for agent_id, world_pos, heading, speed_kmh, lane_id, s in snapshot.agents:
             is_selected = (agent_id == self.viewport.follow_agent_id)
-            self.draw_agent(agent_id, world_pos, heading, speed_kmh, is_selected)
+
+            # Recalcula posición desde carril para asegurar alineación perfecta
+            # Siempre usa offset=0 (centro del carril) para evitar desalineación
+            try:
+                lane = self.world.network.get_lane(lane_id)
+                corrected_world_pos = lane.world_position_at(s, 0.0)
+                corrected_heading = lane.heading_at(s)
+                self.draw_agent(agent_id, corrected_world_pos, corrected_heading, speed_kmh, is_selected, lane_s=s)
+            except Exception as e:
+                # Si hay error, usa la posición original
+                self.draw_agent(agent_id, world_pos, heading, speed_kmh, is_selected, lane_s=s)
+
+        # Dibuja marcadores de distancia (inicio y final de pista)
+        self.draw_distance_markers(snapshot)
 
         # Actualiza FPS
         self.update_fps(snapshot)

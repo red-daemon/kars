@@ -52,7 +52,13 @@ class IDMBehavior:
         desired_gap = self.min_gap + v * self.time_headway + interaction_term
 
         # Término de evitar colisión: (s* / s)^2
-        collision_avoidance_term = (desired_gap / d) ** 2 if d > 0 else 1.0
+        # Si gap es muy pequeño (< 0.1m), fuerza máxima desaceleración
+        if d <= 0.1:
+            collision_avoidance_term = 100.0  # Frenado máximo
+        elif d > 0:
+            collision_avoidance_term = (desired_gap / d) ** 2
+        else:
+            collision_avoidance_term = 1.0
 
         # Ecuación IDM: a = amax * [1 - (v/v0)^delta - (s*/s)^2]
         accel = self.max_accel * (1.0 - free_flow_term - collision_avoidance_term)

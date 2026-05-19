@@ -59,9 +59,14 @@ class PhysicsEngine:
     ) -> float:
         """Limita aceleración deseada dentro de restricciones físicas.
 
-        Nota: No permite marcha atrás. Aceleración está limitada a [0, max_accel].
+        Permite frenado hasta -max_decel. Prohibe marcha atrás (reversa).
+        Agentes parados reciben aceleración = 0 (no pueden ir atrás).
         """
         current_speed = state.speed_ms()
+
+        # Si está parado, no permite ir atrás
+        if current_speed < 1e-6:
+            return max(desired_accel_ms2, 0.0)
 
         if current_speed < 0:
             return max(desired_accel_ms2, physics_body.max_decel_ms2)
@@ -69,5 +74,5 @@ class PhysicsEngine:
         if desired_accel_ms2 > 0:
             return min(desired_accel_ms2, physics_body.max_accel_ms2)
         else:
-            # Limita a 0 (sin marcha atrás), no a -max_decel
-            return max(desired_accel_ms2, 0.0)
+            # Permite frenado hasta -max_decel_ms2 (no a 0)
+            return max(desired_accel_ms2, -physics_body.max_decel_ms2)

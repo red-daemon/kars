@@ -55,17 +55,20 @@ class PerceptionModule:
         agent_s: float,
         agent_lane_id: str,
         agent_speed_ms: float,
-        other_agents: dict,  # {agent_id -> (lane_id, s, speed)}
+        other_agents: dict,  # {agent_id -> (lane_id, s, speed, is_disabled)}
         network,  # RoadNetwork
     ) -> PerceptionData:
         """Calcula percepción del agente.
+
+        Incluye agentes deshabilitados (colisionados) como obstáculos.
+        El IDM verá agentes parados (speed=0) con distancia > 0 y frenarán.
 
         Args:
             agent_id: ID del agente que percibe
             agent_s: Posición a lo largo del carril (metros)
             agent_lane_id: ID del carril del agente
             agent_speed_ms: Velocidad actual del agente (m/s)
-            other_agents: Dict {agent_id -> (lane_id, s, speed)} de otros agentes
+            other_agents: Dict {agent_id -> (lane_id, s, speed, is_disabled)} de otros agentes
             network: RoadNetwork para búsqueda de carriles
 
         Returns:
@@ -91,9 +94,12 @@ class PerceptionModule:
         follower_distance = float("inf")
         follower_speed = 0.0
 
-        for other_id, (other_lane_id, other_s, other_speed) in other_agents.items():
+        for other_id, other_data in other_agents.items():
             if other_id == agent_id:
                 continue  # Ignora al agente mismo
+
+            # Desempaca datos (lane_id, s, speed, is_disabled)
+            other_lane_id, other_s, other_speed = other_data[:3]
 
             if other_lane_id != agent_lane_id:
                 continue  # Solo considera agentes en el mismo carril (MVP)

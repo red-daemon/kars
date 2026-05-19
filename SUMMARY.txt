@@ -120,4 +120,7 @@ FASE 5 (Multi-resolucion):
   2. Transicion suave entre resoluciones
   3. Variables emergentes calibran zonas estadisticas
 
+EXTRAS:
+1. Colisiones en un solo carril.
+
 ================================================================================

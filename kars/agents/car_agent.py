@@ -53,6 +53,11 @@ class CarAgent:
     # Tolerancia individual: +/- variación respecto a velocidad deseada
     speed_tolerance_kmh: float = 0.0
 
+    # Estado de colisión
+    is_disabled: bool = False          # True si está en estado de colisión
+    disable_ticks_remaining: int = 0   # Countdown para remoción
+    shoulder_offset: float = 0.0       # Offset actual hacia la orilla (m)
+
     def get_desired_speed_ms(self) -> float:
         """Velocidad deseada del agente incluyendo tolerancia.
 
@@ -92,6 +97,20 @@ class CarAgent:
         object.__setattr__(self, 'current_lane_id', lane_id)
         object.__setattr__(self, 'position_along_lane_s', s)
         object.__setattr__(self, 'lateral_offset', lateral_offset)
+
+    def set_velocity_world(self, velocity: Vector2):
+        """Establece velocidad en coordenadas mundo (x, y).
+
+        Args:
+            velocity: Vector2 en m/s
+        """
+        new_state = KinematicState(
+            position=self.kinematic_state.position,
+            velocity=velocity,
+            acceleration=self.kinematic_state.acceleration,
+            heading=self.kinematic_state.heading,
+        )
+        object.__setattr__(self, 'kinematic_state', new_state)
 
     def decide(self, perception: PerceptionData) -> float:
         """Calcula aceleración deseada basada en percepción.

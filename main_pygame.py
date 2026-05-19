@@ -19,7 +19,7 @@ def main():
     print("  KARS: INTERFAZ GRÁFICA INTERACTIVA")
     print("=" * 70)
 
-    # Crea entorno (carril único de 1000m para que se vea completo)
+    # Crea entorno (carril único de 1000m)
     print("\n[Setup] Creando entorno...")
     lane = Lane(
         lane_id="lane_0",
@@ -29,30 +29,21 @@ def main():
         ],
         width_m=2.7,
         speed_limit_kmh=20.0,
+        zone="urban",
     )
 
-    segment = RoadSegment("seg_0", [lane], Vector2(0, 0), Vector2(500, 0))
+    segment = RoadSegment("seg_0", [lane], Vector2(0, 0), Vector2(1000, 0))
     network = RoadNetwork()
     network.add_segment(segment)
 
     # Crea World
     world = World(network)
 
-    # Crea 5 agentes iniciales
-    print("[Setup] Agregando 5 agentes iniciales...")
-    positions = [50, 130, 210, 290, 370]
-    for i, initial_s in enumerate(positions, 1):
-        agent = CarAgent(
-            agent_id=world.get_next_agent_id(),
-            current_lane_id="lane_0",
-            position_along_lane_s=initial_s,
-            lateral_offset=0.0,
-            speed_tolerance_kmh=0.0,
-        )
-        world_pos = lane.world_position_at(agent.position_along_lane_s, 0.0)
-        agent.set_position_world(world_pos, heading=0)
-        world.add_agent(agent)
-        print(f"    Agente {i}: s={initial_s}m")
+    # Agrega obstáculo fijo a 2/3 del carril (simula accidente o señal de alto)
+    obstacle_s = 1000 * (2.0 / 3.0)
+    obstacle_id = world.add_permanent_obstacle("lane_0", obstacle_s)
+    print(f"\n[Setup] Obstáculo fijo agregado a s={obstacle_s:.0f}m (2/3 del carril)")
+    print(f"[Setup] Tráfico se genera automáticamente según zona 'urban'")
 
     print("\n[Controls]")
     print("  Left click:  Spawn agente en la carretera")
@@ -68,9 +59,17 @@ def main():
     renderer = Renderer()
 
     print("\n[Running] Simulación en vivo...")
+    frame_count = 0
     try:
         while renderer.running:
-            if not renderer.run_frame(world):
+            frame_count += 1
+            try:
+                if not renderer.run_frame(world):
+                    break
+            except Exception as frame_error:
+                print(f"\n[Frame Error] Frame #{frame_count}: {frame_error}")
+                import traceback
+                traceback.print_exc()
                 break
     except KeyboardInterrupt:
         print("\n[Interrupted] Simulación detenida por usuario")
@@ -80,6 +79,7 @@ def main():
         traceback.print_exc()
     finally:
         renderer.close()
+        print(f"\n[Stats] Total frames rendered: {frame_count}")
 
     # Estadísticas finales
     print("\n" + "=" * 70)

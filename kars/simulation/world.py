@@ -2,9 +2,11 @@
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+from collections import defaultdict
 import random
+import math
 
-from kars.physics.models import Vector2, Waypoint
+from kars.physics.models import Vector2, Waypoint, KinematicState
 from kars.agents.car_agent import CarAgent
 from kars.agents.perception import PerceptionModule
 from kars.physics.engine import PhysicsEngine
@@ -123,11 +125,96 @@ class World:
         self._agent_id_counter += 1
         return agent_id
 
+    def _try_spawn_at_lane_start(self, lane: Lane, zone_params: dict) -> None:
+        """Intenta crear un nuevo agente al inicio del carril.
+
+        Args:
+            lane: Lane donde hacer spawn
+            zone_params: Dict con parámetros de tráfico de la zona
+        """
+        min_headway = zone_params['min_spawn_headway_m']
+
+        # Verifica si hay agente dentro del headway mínimo
+        for agent in self.agents.values():
+            if agent.current_lane_id == lane.lane_id and agent.position_along_lane_s < min_headway:
+                return
+
+        # Elige velocidad inicial según distribución normal
+        speed_mean_kmh = zone_params['speed_mean_kmh']
+        speed_std_kmh = zone_params['speed_std_kmh']
+        speed_kmh = random.gauss(speed_mean_kmh, speed_std_kmh)
+        speed_kmh = max(0.0, min(config.MAX_SPEED_KMH, speed_kmh))
+        speed_ms = speed_kmh / 3.6
+
+        # Crea agente al inicio (s ≈ 0)
+        agent = CarAgent(
+            agent_id=self.get_next_agent_id(),
+            current_lane_id=lane.lane_id,
+            position_along_lane_s=0.1,
+            lateral_offset=0.0,
+            speed_tolerance_kmh=0.0,
+        )
+
+        # Pone velocidad inicial
+        initial_pos = lane.world_position_at(0.1, 0.0)
+        initial_heading = lane.heading_at(0.1)
+        agent.set_position_world(initial_pos, heading=initial_heading)
+        agent.set_velocity_world(Vector2(
+            speed_ms * math.cos(initial_heading),
+            speed_ms * math.sin(initial_heading),
+        ))
+
+        self.add_agent(agent)
+
+    def _disable_agent(self, agent: CarAgent) -> None:
+        """Deshabilita un agente por colisión.
+
+        Args:
+            agent: CarAgent a deshabilitar
+        """
+        agent.is_disabled = True
+        agent.disable_ticks_remaining = config.COLLISION_DISABLE_TICKS
+
+    def add_permanent_obstacle(self, lane_id: str, position_s: float) -> int:
+        """Agrega un obstáculo permanente (señal de alto, accidente, etc).
+
+        Args:
+            lane_id: ID del carril
+            position_s: Posición a lo largo del carril (metros)
+
+        Returns:
+            ID del agente obstáculo (para referencia)
+        """
+        agent = CarAgent(
+            agent_id=self.get_next_agent_id(),
+            current_lane_id=lane_id,
+            position_along_lane_s=position_s,
+            lateral_offset=0.0,
+        )
+
+        # Posiciona el obstáculo
+        try:
+            lane = self.network.get_lane(lane_id)
+            world_pos = lane.world_position_at(position_s, 0.0)
+            heading = lane.heading_at(position_s)
+            agent.set_position_world(world_pos, heading=heading)
+        except ValueError:
+            return -1
+
+        # Lo pone en estado permanente deshabilitado
+        agent.is_disabled = True
+        agent.disable_ticks_remaining = -1  # -1 = nunca se elimina
+
+        self.add_agent(agent)
+        return agent.agent_id
+
     def _phase_perception(self) -> None:
         """FASE 1: Calcula percepcion de todos los agentes (read-only estado N)."""
         # Prepara dict de otros agentes para PerceptionModule
+        # Incluye flag de deshabilitación para filtrar colisiones
         other_agents_data = {
-            agent_id: (agent.current_lane_id, agent.position_along_lane_s, agent.kinematic_state.speed_ms())
+            agent_id: (agent.current_lane_id, agent.position_along_lane_s,
+                      agent.kinematic_state.speed_ms(), agent.is_disabled)
             for agent_id, agent in self.agents.items()
         }
 
@@ -148,6 +235,11 @@ class World:
     def _phase_decision(self) -> None:
         """FASE 2: Agentes toman decisiones (read-only estado N)."""
         for agent in self.agents.values():
+            # Agentes deshabilitados no deciden
+            if agent.is_disabled:
+                agent._desired_accel = 0.0
+                continue
+
             perception = getattr(agent, '_last_perception', None)
             if perception is not None:
                 # Agente decide aceleracion basada en percepcion
@@ -158,6 +250,16 @@ class World:
     def _phase_physics(self) -> None:
         """FASE 3: Integra fisica (escribe en buffer N+1)."""
         for agent in self.agents.values():
+            # Agentes deshabilitados se detienen
+            if agent.is_disabled:
+                agent.kinematic_state = KinematicState(
+                    position=agent.kinematic_state.position,
+                    velocity=Vector2(0, 0),
+                    acceleration=Vector2(0, 0),
+                    heading=agent.kinematic_state.heading,
+                )
+                continue
+
             desired_accel = getattr(agent, '_desired_accel', 0.0)
 
             # Integra
@@ -171,23 +273,59 @@ class World:
             agent.kinematic_state = new_state
 
     def _phase_environment(self) -> None:
-        """FASE 4: Actualiza entorno (semaforos, spawns, etc).
+        """FASE 4: Actualiza entorno (generador de tráfico, animación orilla, etc)."""
+        # Generador de tráfico probabilístico
+        for lane in self.network.get_all_lanes():
+            zone_params = config.ZONE_TRAFFIC.get(lane.zone, config.ZONE_TRAFFIC['urban'])
+            rate = zone_params['arrival_rate_veh_per_min'] / 60.0
+            prob = rate * config.TICK_DT_S * self.sim_speed_factor
+            if random.random() < prob:
+                self._try_spawn_at_lane_start(lane, zone_params)
 
-        En MVP: noop. En Fase 3+ agrega semaforos y generacion dinamica.
-        """
-        pass
+        # Animación de agentes en orilla (deshabilitados)
+        for agent in list(self.agents.values()):
+            if agent.is_disabled:
+                # No decrementa si es obstáculo permanente (-1)
+                if agent.disable_ticks_remaining > 0:
+                    agent.disable_ticks_remaining -= 1
+
+                if agent.shoulder_offset < config.SHOULDER_OFFSET_M:
+                    agent.shoulder_offset = min(
+                        agent.shoulder_offset + config.SHOULDER_ANIM_SPEED_M_PER_TICK,
+                        config.SHOULDER_OFFSET_M
+                    )
+
+                # Solo elimina si no es permanente (disable_ticks_remaining >= 0)
+                if agent.disable_ticks_remaining == 0:
+                    self.remove_agent(agent.agent_id)
 
     def _phase_spatial_index(self) -> None:
-        """FASE 5: Reconstruye indice espacial con posiciones N+1."""
+        """FASE 5: Sincroniza posiciones, detecta colisiones, limpia fin de carril."""
         self.spatial_grid.clear()
+        agents_to_remove = []
 
+        # SINCRONIZA POSICIONES DE AGENTES ACTIVOS
         for agent in self.agents.values():
+            # Agentes deshabilitados no se sincronizan: mantienen su posición del accidente
+            if agent.is_disabled:
+                # Solo inserta en grid para geometría, pero mantiene s/offset del accidente
+                try:
+                    self.spatial_grid.insert(agent.agent_id, agent.kinematic_state.position)
+                except ValueError:
+                    pass
+                continue
+
             # Sincroniza posicion en carril basada en (x, y) actual
             try:
                 lane = self.network.get_lane(agent.current_lane_id)
 
                 new_s = lane.find_closest_s(agent.kinematic_state.position)
                 new_offset = lane.get_lateral_offset_at(agent.kinematic_state.position, new_s)
+
+                # Comprueba fin de carril
+                if new_s >= lane.length_m():
+                    agents_to_remove.append(agent.agent_id)
+                    continue
 
                 agent.set_position_lane(agent.current_lane_id, new_s, new_offset)
 
@@ -196,6 +334,30 @@ class World:
             except ValueError:
                 # Carril no existe, ignorar
                 pass
+
+        # Elimina agentes que llegaron al final
+        for agent_id in agents_to_remove:
+            self.remove_agent(agent_id)
+
+        # DETECCIÓN DE COLISIONES (después de sincronizar, con datos frescos)
+        by_lane: Dict[str, List[CarAgent]] = defaultdict(list)
+        for agent in self.agents.values():
+            by_lane[agent.current_lane_id].append(agent)
+
+        for lane_id, lane_agents in by_lane.items():
+            lane_agents.sort(key=lambda a: a.position_along_lane_s)
+
+            # Detecta solapamientos: si dos agentes consecutivos tienen gap < crítico
+            for i in range(len(lane_agents) - 1):
+                rear = lane_agents[i]
+                front = lane_agents[i + 1]
+                gap = front.position_along_lane_s - rear.position_along_lane_s
+
+                if gap < config.CAR_LENGTH_M * config.COLLISION_OVERLAP_RATIO:
+                    if not rear.is_disabled:
+                        self._disable_agent(rear)
+                    if not front.is_disabled:
+                        self._disable_agent(front)
 
     def _phase_statistics(self) -> None:
         """FASE 6: Recolecta estadisticas (observador puro)."""
