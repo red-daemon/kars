@@ -235,3 +235,4 @@ class TestStatsCollector:
 
         assert "total_ticks" in summary
         assert "avg_agent_speed_kmh" in summary
+

@@ -2,7 +2,9 @@
 """Test: vista lineal sin zoom con marcadores de distancia."""
 
 import sys
-sys.path.insert(0, '/c/Users/bgaxiola/OneDrive - Capgemini/Projects/Kars')
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from kars.physics.models import Vector2, Waypoint
 from kars.environment.lane import Lane
@@ -72,3 +74,4 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
+

@@ -337,3 +337,4 @@ class TestSpatialGrid:
 
         assert stats["total_agents"] == 3
         assert stats["total_cells"] == 2  # Una celda con 2 agentes, otra con 1
+

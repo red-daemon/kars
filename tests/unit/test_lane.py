@@ -290,3 +290,4 @@ class TestLaneValidation:
 
         assert abs(lane.width_m - 3.5) < 1e-6
         assert abs(lane.speed_limit_kmh - 50.0) < 1e-6
+
