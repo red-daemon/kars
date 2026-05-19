@@ -4,8 +4,8 @@
 try:
     print("Importando config...")
     import kars.config as config
-    print(f"  ✓ ZONE_TRAFFIC: {list(config.ZONE_TRAFFIC.keys())}")
-    print(f"  ✓ COLLISION_DISABLE_TICKS: {config.COLLISION_DISABLE_TICKS}")
+    print(f"  OK ZONE_TRAFFIC: {list(config.ZONE_TRAFFIC.keys())}")
+    print(f"  OK COLLISION_DISABLE_TICKS: {config.COLLISION_DISABLE_TICKS}")
 
     print("\nImportando Lane...")
     from kars.environment.lane import Lane
@@ -15,7 +15,7 @@ try:
         waypoints=[Waypoint(Vector2(0, 0), 0), Waypoint(Vector2(100, 0), 0)],
         zone="urban"
     )
-    print(f"  ✓ Lane creado con zone='{lane.zone}'")
+    print(f"  OK Lane creado con zone='{lane.zone}'")
 
     print("\nImportando CarAgent...")
     from kars.agents.car_agent import CarAgent
@@ -27,7 +27,7 @@ try:
         disable_ticks_remaining=0,
         shoulder_offset=0.0,
     )
-    print(f"  ✓ CarAgent creado con is_disabled={agent.is_disabled}")
+    print(f"  OK CarAgent creado con is_disabled={agent.is_disabled}")
 
     print("\nImportando World...")
     from kars.environment.road_network import RoadNetwork
@@ -38,12 +38,12 @@ try:
     network = RoadNetwork()
     network.add_segment(segment)
     world = World(network)
-    print(f"  ✓ World creado con {world.num_agents()} agentes iniciales")
+    print(f"  OK World creado con {world.num_agents()} agentes iniciales")
 
-    print("\n✅ Todos los imports y estructuras básicas funcionan correctamente")
+    print("\nOK Todos los imports y estructuras basicas funcionan correctamente")
 
 except Exception as e:
-    print(f"\n❌ Error: {e}")
+    print(f"\nERROR: {e}")
     import traceback
     traceback.print_exc()
     exit(1)

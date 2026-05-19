@@ -59,16 +59,16 @@ def test_linear_view():
         window_width = 1200
         pixels_per_meter = window_width / lane_length_m
         print(f"\n  Pixels per meter: {pixels_per_meter:.3f}")
-        print(f"  Escala: 1000m → {1000 * pixels_per_meter:.0f} píxeles")
+        print(f"  Escala: 1000m -> {1000 * pixels_per_meter:.0f} pixeles")
         print(f"  Viewport: 0m (píx 0) a 1000m (píx {1000 * pixels_per_meter:.0f})")
 
-    print(f"\n✅ Test pasó: Estructura lista para vista lineal")
+    print(f"\nOK Test paso: Estructura lista para vista lineal")
 
 if __name__ == "__main__":
     try:
         test_linear_view()
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\nERROR: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
