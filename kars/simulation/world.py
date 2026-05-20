@@ -30,6 +30,7 @@ class RenderSnapshot:
 
     # Entorno
     lanes: List[tuple] = field(default_factory=list)  # (lane_id, waypoints)
+    obstacles: List[tuple] = field(default_factory=list)  # (world_pos, lane_id, s) para obstáculos permanentes
 
     # Tiempo simulado
     sim_time_s: float = 0.0
@@ -50,17 +51,19 @@ class World:
     - Produce snapshots para render
     """
 
-    def __init__(self, network: RoadNetwork, allow_spawning: bool = False):
+    def __init__(self, network: RoadNetwork, allow_spawning: bool = False, on_tick_callback=None):
         """Inicializa World.
 
         Args:
             network: RoadNetwork con la topologia de calles
             allow_spawning: Si True, auto-spawn de vehículos. Si False, solo manual via mouse.
+            on_tick_callback: Callback(world, tick_number) para eventos customizados cada tick.
         """
         self.network = network
         self.agents: Dict[int, CarAgent] = {}
         self._agent_id_counter = config.AGENT_ID_COUNTER_START
         self.allow_spawning = allow_spawning
+        self.on_tick_callback = on_tick_callback
 
         # Estado temporalizado
         self.tick_number = 0
@@ -276,6 +279,10 @@ class World:
 
     def _phase_environment(self) -> None:
         """FASE 4: Actualiza entorno (generador de tráfico, animación orilla, etc)."""
+        # Ejecuta callback de escena si existe
+        if self.on_tick_callback:
+            self.on_tick_callback(self, self.tick_number)
+
         # Generador de tráfico probabilístico - solo si allow_spawning está habilitado
         if self.allow_spawning:
             for lane in self.network.get_all_lanes():
@@ -427,6 +434,16 @@ class World:
             waypoints_list = [(wp.position.x, wp.position.y) for wp in lane.waypoints]
             lane_data.append((lane.lane_id, waypoints_list, lane.width_m))
 
+        # Obstáculos permanentes (agentes con is_disabled=True y disable_ticks_remaining=-1)
+        obstacle_data = []
+        for agent in self.agents.values():
+            if agent.is_disabled and agent.disable_ticks_remaining == -1:
+                obstacle_data.append((
+                    agent.kinematic_state.position,
+                    agent.current_lane_id,
+                    agent.position_along_lane_s,
+                ))
+
         # Stats para HUD
         last_stats = self.stats_collector.get_last_tick()
         avg_speed = last_stats.avg_speed_kmh if last_stats else 0.0
@@ -434,6 +451,7 @@ class World:
         snapshot = RenderSnapshot(
             agents=agent_data,
             lanes=lane_data,
+            obstacles=obstacle_data,
             sim_time_s=self.sim_time_s,
             tick_number=self.tick_number,
             avg_speed_kmh=avg_speed,

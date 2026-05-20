@@ -42,8 +42,8 @@ def main(scene_name: str = "test_single_car_acceleration"):
     print(f"[Setup] Escena: {scene.name}")
     print(f"[Setup] {scene.description}")
 
-    # Crea World desde escena
-    world = World(scene.network, **scene.world_config)
+    # Crea World desde escena, pasando el callback de escena
+    world = World(scene.network, on_tick_callback=scene.on_tick, **scene.world_config)
 
     # Agrega agentes iniciales
     for agent in scene.initial_agents:
@@ -72,9 +72,6 @@ def main(scene_name: str = "test_single_car_acceleration"):
             try:
                 if not renderer.run_frame(world):
                     break
-                # Ejecuta callback de escena si existe
-                if scene.on_tick:
-                    scene.on_tick(world, world.tick_number)
             except Exception as frame_error:
                 print(f"\n[Frame Error] Frame #{frame_count}: {frame_error}")
                 import traceback

@@ -160,6 +160,40 @@ class SceneLoader:
         return agents
 
     @staticmethod
+    def _create_obstacle_avoidance_callback():
+        """Callback especial para escena de evasión de obstáculos.
+
+        - Congela carro los primeros 3 segundos
+        - Crea obstáculo permanente a 2/3 de la calle en tick 0
+        """
+        from kars.physics.models import Vector2, KinematicState
+
+        freeze_ticks = 60  # 3 segundos a 40 ticks/s
+        obstacle_created = [False]
+
+        def on_tick_obstacle_avoidance(world, tick_number):
+            # Congela el carro los primeros 3 segundos
+            if tick_number < freeze_ticks:
+                for agent in world.agents.values():
+                    if not agent.is_disabled:
+                        frozen_state = KinematicState(
+                            position=agent.kinematic_state.position,
+                            velocity=Vector2(0.0, 0.0),
+                            acceleration=Vector2(0.0, 0.0),
+                            heading=agent.kinematic_state.heading,
+                        )
+                        object.__setattr__(agent, 'kinematic_state', frozen_state)
+
+            # Crea obstáculo permanente solo una vez en el tick 0
+            if tick_number == 0 and not obstacle_created[0]:
+                lane = world.network.get_lane("lane_0")
+                obstacle_s = lane.length_m() * (2.0 / 3.0)
+                world.add_permanent_obstacle("lane_0", obstacle_s)
+                obstacle_created[0] = True
+
+        return on_tick_obstacle_avoidance
+
+    @staticmethod
     def load_scene(filepath: str) -> SceneSetup:
         """Carga escena completa desde JSON.
 
@@ -187,22 +221,26 @@ class SceneLoader:
         # Configuración de world
         world_config = config.get('world', {})
 
-        # Crear callback para congelar durante 3 segundos
-        freeze_ticks = 60  # 3 segundos a 20 ticks/s
+        # Detecta tipo de escena y aplica callback apropiado
+        if "obstacle" in name.lower() or "avoidance" in description.lower():
+            on_tick_callback = SceneLoader._create_obstacle_avoidance_callback()
+        else:
+            # Escena default - solo freeze
+            freeze_ticks = 60
 
-        def on_tick_freeze_initial(world, tick_number):
-            """Congela todos los agentes durante los primeros 3 segundos."""
-            if tick_number < freeze_ticks:
-                # Congela velocidad a 0 para todos los agentes
-                for agent in world.agents.values():
-                    if not agent.is_disabled:
-                        frozen_state = KinematicState(
-                            position=agent.kinematic_state.position,
-                            velocity=Vector2(0.0, 0.0),
-                            acceleration=Vector2(0.0, 0.0),
-                            heading=agent.kinematic_state.heading,
-                        )
-                        object.__setattr__(agent, 'kinematic_state', frozen_state)
+            def on_tick_freeze_initial(world, tick_number):
+                if tick_number < freeze_ticks:
+                    for agent in world.agents.values():
+                        if not agent.is_disabled:
+                            frozen_state = KinematicState(
+                                position=agent.kinematic_state.position,
+                                velocity=Vector2(0.0, 0.0),
+                                acceleration=Vector2(0.0, 0.0),
+                                heading=agent.kinematic_state.heading,
+                            )
+                            object.__setattr__(agent, 'kinematic_state', frozen_state)
+
+            on_tick_callback = on_tick_freeze_initial
 
         return SceneSetup(
             name=name,
@@ -210,7 +248,7 @@ class SceneLoader:
             network=network,
             initial_agents=agents,
             world_config=world_config,
-            on_tick=on_tick_freeze_initial,
+            on_tick=on_tick_callback,
         )
 
     @staticmethod

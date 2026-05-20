@@ -191,6 +191,34 @@ class Renderer:
 
         return surface
 
+    def draw_obstacles(self, snapshot: RenderSnapshot) -> None:
+        """Dibuja símbolos para obstáculos permanentes.
+
+        Args:
+            snapshot: RenderSnapshot con obstáculos
+        """
+        for world_pos, lane_id, s in snapshot.obstacles:
+            screen_x, screen_y = self.viewport.world_to_screen(world_pos)
+
+            # Dibuja un símbolo X grande en rojo
+            size = 15
+            line_color = (255, 0, 0)  # Rojo puro
+            line_width = 3
+
+            # Línea diagonal /
+            pygame.draw.line(self.screen, line_color,
+                           (int(screen_x) - size, int(screen_y) - size),
+                           (int(screen_x) + size, int(screen_y) + size), line_width)
+            # Línea diagonal \
+            pygame.draw.line(self.screen, line_color,
+                           (int(screen_x) + size, int(screen_y) - size),
+                           (int(screen_x) - size, int(screen_y) + size), line_width)
+
+            # Etiqueta "STOP"
+            font = pygame.font.Font(None, 14)
+            text = font.render("STOP", True, line_color)
+            self.screen.blit(text, (int(screen_x) - 15, int(screen_y) + size + 5))
+
     def draw_distance_markers(self, snapshot: RenderSnapshot) -> None:
         """Dibuja marcadores de distancia (inicio y final de pista).
 
@@ -501,14 +529,14 @@ class Renderer:
                 for i in range(len(waypoints)-1)
             )
 
-            # Aplica factor de escala para que la visualización sea correcta
-            # El viewport en el test mostraba bien con 3.0 px/m
-            # Aquí necesitamos ajustar según el tamaño de la ventana
-            self.viewport.camera.set_zoom(2.5)
+            # Calcula zoom para que la calle completa (0 a lane_length_m) quepa en pantalla
+            # Queremos: lane_length_m * SCALE_PX_PER_M * zoom = width_px
+            scale_px_per_m = config.SCALE_PX_PER_M
+            required_zoom = self.width_px / (lane_length_m * scale_px_per_m)
+            self.viewport.camera.set_zoom(required_zoom)
 
-            # Centra en el inicio (primeros 300m del carril)
-            # El carril es horizontal en Y=0, no en Y=width/2
-            center_x = 150.0
+            # Centra en el medio de la calle
+            center_x = lane_length_m / 2.0
             center_y = 0.0
             self.viewport.camera.center_on(Vector2(center_x, center_y))
 
@@ -540,6 +568,9 @@ class Renderer:
 
         # Dibuja marcadores de distancia (inicio y final de pista)
         self.draw_distance_markers(snapshot)
+
+        # Dibuja obstáculos permanentes
+        self.draw_obstacles(snapshot)
 
         # Actualiza FPS
         self.update_fps(snapshot)
