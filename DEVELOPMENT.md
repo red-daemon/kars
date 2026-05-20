@@ -7,7 +7,36 @@ Plan de desarrollo con tareas atómicas. Cada tarea = 1 commit.
 ### Phase 1: Agent-Based Traffic Simulator MVP ✅ COMPLETADA
 - ✅ Lanes, agents, physics, rendering
 
-### Phase 2: Multi-Lane + Lane Changes (EN PROGRESO)
+### Collision System Fixes (EN PROGRESO)
+Correcciones y mejoras del sistema de colisiones.
+
+#### 1.1 - Fixed Camera (No seguir carros) 
+- [ ] Comentar líneas 463-467 en renderer.py que centran en promedio de agentes
+- [ ] Verificar que cámara se mantiene fija en (150, 0)
+- [ ] Crear test de validación: `tests/validation/validate_fixed_camera.py`
+- [ ] **COMMIT**: "Cambiar cámara a modo fijo (no sigue carros)"
+
+**Problema identificado**: Línea 463-467 de renderer.py centra en promedio de posiciones de agentes cada frame
+
+#### 1.2 - Collision Handling (Pausa + Desaparición)
+- [ ] Cuando dos carros colisionan, se quedan parados
+- [ ] Implementar contador de 20 segundos de inmovilidad
+- [ ] Después de 20s, agentes desaparecen del mundo
+- [ ] Crear tests unitarios: `tests/unit/test_collision_death.py`
+- [ ] Crear tests integración: `tests/integration/test_collision_lifecycle.py`
+- [ ] Crear test de validación: `tests/validation/validate_collision_behavior.py`
+- [ ] **COMMIT**: "Colisión: parada de 20s y desaparición"
+
+#### 1.3 - Obstacle Handling (Detención indefinida)
+- [ ] Implementar obstáculos en carriles
+- [ ] Carros se detienen cuando detectan obstáculo adelante
+- [ ] Carros reanudan marcha cuando obstáculo desaparece
+- [ ] Crear tests unitarios: `tests/unit/test_obstacle_detection.py`
+- [ ] Crear tests integración: `tests/integration/test_obstacle_avoidance.py`
+- [ ] Crear test de validación: `tests/validation/validate_obstacle_behavior.py`
+- [ ] **COMMIT**: "Implementar obstáculos: detención indefinida hasta que desaparezcan"
+
+### Phase 2: Multi-Lane + Lane Changes (PENDIENTE)
 
 #### 2.1 - Lane-Change Decision (MOBIL Model)
 - [ ] Implementar modelo MOBIL (Minimizing Overall Braking Induced by Lane-change)
@@ -116,6 +145,9 @@ Plan de desarrollo con tareas atómicas. Cada tarea = 1 commit.
 | Tarea | Estado | Commit | Fecha |
 |-------|--------|--------|-------|
 | Phase 1 MVP | ✅ Completada | a3cbeed | 2026-05-19 |
+| 1.1 Fixed Camera | ⏳ EN PROGRESO | - | - |
+| 1.2 Collision Lifecycle | ⏳ Pendiente | - | - |
+| 1.3 Obstacle Handling | ⏳ Pendiente | - | - |
 | 2.1 MOBIL Model | ⏳ Pendiente | - | - |
 | 2.2 Lane Physics | ⏳ Pendiente | - | - |
 | 2.3 Multi-Lane Network | ⏳ Pendiente | - | - |

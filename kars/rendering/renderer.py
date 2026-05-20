@@ -459,12 +459,13 @@ class Renderer:
         snapshot = world.build_render_snapshot()
         self.viewport.update(snapshot, world.agents)
 
+        # DESHABILITADO: Cámara fija (no sigue agentes)
         # Si no hay follow mode, centra en promedio de posiciones de agentes
-        if self.viewport.follow_agent_id is None and snapshot.agents:
-            avg_s = sum(s for _, _, _, _, _, s in snapshot.agents) / len(snapshot.agents)
-            lane = world.network.get_lane(snapshot.agents[0][4])
-            avg_world_pos = lane.world_position_at(avg_s, 0.0)
-            self.viewport.camera.center_on(avg_world_pos)
+        # if self.viewport.follow_agent_id is None and snapshot.agents:
+        #     avg_s = sum(s for _, _, _, _, _, s in snapshot.agents) / len(snapshot.agents)
+        #     lane = world.network.get_lane(snapshot.agents[0][4])
+        #     avg_world_pos = lane.world_position_at(avg_s, 0.0)
+        #     self.viewport.camera.center_on(avg_world_pos)
 
         # Configuración inicial: centra en el carril (solo una vez)
         if not self.initial_zoom_done and len(snapshot.lanes) > 0:
