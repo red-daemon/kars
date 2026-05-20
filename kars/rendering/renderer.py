@@ -314,9 +314,9 @@ class Renderer:
             # Si el fondo es claro (luminancia > 127), usa texto negro; si es oscuro, usa blanco
             text_color = (0, 0, 0) if luminance > 127 else (255, 255, 255)
 
-            font_id = pygame.font.Font(None, 12)
-            text = font_id.render(f"{agent_id}", True, text_color)
-            self.screen.blit(text, (screen_x - 5, screen_y - 5))
+            font_speed = pygame.font.Font(None, 12)
+            text = font_speed.render(f"{speed_kmh:.1f}", True, text_color)
+            self.screen.blit(text, (screen_x - 10, screen_y - 5))
 
     def _find_agent_at_screen(self, snapshot: RenderSnapshot, mouse_pos: Tuple[int, int],
                               threshold_px: int = 20) -> Optional[Tuple[int, Vector2]]:
@@ -398,7 +398,10 @@ class Renderer:
                 lane, s = self._find_nearest_lane_s(world.network, world_pos)
 
                 if lane is not None:
-                    # Spawn nuevo agente
+                    # Spawn nuevo agente con velocidad inicial
+                    import random
+                    from kars.physics.models import Vector2, KinematicState
+
                     agent_id = world.get_next_agent_id()
                     agent = CarAgent(
                         agent_id=agent_id,
@@ -406,8 +409,30 @@ class Renderer:
                         position_along_lane_s=s,
                         lateral_offset=0.0,
                     )
+
+                    # Muestrea multiplicador de velocidad
+                    speed_multiplier = random.gauss(1.0, 0.2)
+                    speed_multiplier = max(0.5, min(1.5, speed_multiplier))
+                    object.__setattr__(agent, 'speed_multiplier', speed_multiplier)
+
+                    # Configura velocidad deseada basada en límite de calle
+                    lane_speed_limit_kmh = lane.speed_limit_kmh
+                    desired_speed_ms = (lane_speed_limit_kmh * speed_multiplier) / 3.6
+                    object.__setattr__(agent.idm_behavior, 'desired_speed', desired_speed_ms)
+
                     world_pos_snapped = lane.world_position_at(s, 0.0)
                     agent.set_position_world(world_pos_snapped, heading=0.0)
+
+                    # Establece velocidad inicial (0 m/s - el carro empieza parado)
+                    initial_velocity_ms = 0.0
+                    new_kinematic_state = KinematicState(
+                        position=world_pos_snapped,
+                        velocity=Vector2(initial_velocity_ms, 0.0),
+                        acceleration=Vector2(0, 0),
+                        heading=0.0,
+                    )
+                    object.__setattr__(agent, 'kinematic_state', new_kinematic_state)
+
                     world.add_agent(agent)
 
             # Right click: remove agente (o click en agente para seguir)

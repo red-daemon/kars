@@ -15,8 +15,8 @@ if not os.path.exists(PYTHON_EXECUTABLE):
 # ============================================================================
 # TIEMPO DE SIMULACIÓN
 # ============================================================================
-# Cada tick avanza 50ms simulados (20 ticks por segundo)
-TICK_DT_S = 0.05
+# Cada tick avanza 25ms simulados (40 ticks por segundo) - más suave y lento
+TICK_DT_S = 0.025
 RENDER_TARGET_FPS = 30
 RENDER_SKIP_FRAMES = 1  # Renderiza cada N ticks
 

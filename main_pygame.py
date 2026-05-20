@@ -4,46 +4,52 @@
 import sys
 sys.path.insert(0, '/c/Users/bgaxiola/OneDrive - Capgemini/Projects/Kars')
 
+from pathlib import Path
 from kars.physics.models import Vector2, Waypoint
 from kars.agents.car_agent import CarAgent
 from kars.environment.lane import Lane
 from kars.environment.segment import RoadSegment
 from kars.environment.road_network import RoadNetwork
 from kars.simulation.world import World
+from kars.simulation.scene_loader import SceneLoader
 from kars.rendering.renderer import Renderer
 
 
-def main():
+def main(scene_name: str = "test_single_car_acceleration"):
     """Demostración visual interactiva del simulador."""
     print("\n" + "=" * 70)
     print("  KARS: INTERFAZ GRÁFICA INTERACTIVA")
     print("=" * 70)
 
-    # Crea entorno (carril único de 1000m)
-    print("\n[Setup] Creando entorno...")
-    lane = Lane(
-        lane_id="lane_0",
-        waypoints=[
-            Waypoint(Vector2(0, 0), heading=0),
-            Waypoint(Vector2(1000, 0), heading=0)
-        ],
-        width_m=2.7,
-        speed_limit_kmh=20.0,
-        zone="urban",
-    )
+    # Carga escena desde JSON
+    print(f"\n[Setup] Cargando escena: {scene_name}...")
+    scenario_file = Path("scenarios") / f"{scene_name}.json"
 
-    segment = RoadSegment("seg_0", [lane], Vector2(0, 0), Vector2(1000, 0))
-    network = RoadNetwork()
-    network.add_segment(segment)
+    if not scenario_file.exists():
+        print(f"[ERROR] Archivo de escena no encontrado: {scenario_file}")
+        available = SceneLoader.list_available_scenarios("scenarios")
+        print(f"Escenarios disponibles: {available}")
+        return
 
-    # Crea World
-    world = World(network)
+    try:
+        scene = SceneLoader.load_scene(str(scenario_file))
+    except Exception as e:
+        print(f"[ERROR] Error al cargar escena: {e}")
+        import traceback
+        traceback.print_exc()
+        return
 
-    # Agrega obstáculo fijo a 2/3 del carril (simula accidente o señal de alto)
-    obstacle_s = 1000 * (2.0 / 3.0)
-    obstacle_id = world.add_permanent_obstacle("lane_0", obstacle_s)
-    print(f"\n[Setup] Obstáculo fijo agregado a s={obstacle_s:.0f}m (2/3 del carril)")
-    print(f"[Setup] Tráfico se genera automáticamente según zona 'urban'")
+    print(f"[Setup] Escena: {scene.name}")
+    print(f"[Setup] {scene.description}")
+
+    # Crea World desde escena
+    world = World(scene.network, **scene.world_config)
+
+    # Agrega agentes iniciales
+    for agent in scene.initial_agents:
+        world.add_agent(agent)
+
+    print(f"[Setup] Agentes iniciales: {len(scene.initial_agents)}")
 
     print("\n[Controls]")
     print("  Left click:  Spawn agente en la carretera")
@@ -66,6 +72,9 @@ def main():
             try:
                 if not renderer.run_frame(world):
                     break
+                # Ejecuta callback de escena si existe
+                if scene.on_tick:
+                    scene.on_tick(world, world.tick_number)
             except Exception as frame_error:
                 print(f"\n[Frame Error] Frame #{frame_count}: {frame_error}")
                 import traceback
@@ -96,4 +105,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    scene_name = sys.argv[1] if len(sys.argv) > 1 else "test_single_car_acceleration"
+    main(scene_name)

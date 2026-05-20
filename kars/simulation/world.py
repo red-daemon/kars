@@ -50,15 +50,17 @@ class World:
     - Produce snapshots para render
     """
 
-    def __init__(self, network: RoadNetwork):
+    def __init__(self, network: RoadNetwork, allow_spawning: bool = False):
         """Inicializa World.
 
         Args:
             network: RoadNetwork con la topologia de calles
+            allow_spawning: Si True, auto-spawn de vehículos. Si False, solo manual via mouse.
         """
         self.network = network
         self.agents: Dict[int, CarAgent] = {}
         self._agent_id_counter = config.AGENT_ID_COUNTER_START
+        self.allow_spawning = allow_spawning
 
         # Estado temporalizado
         self.tick_number = 0
@@ -274,13 +276,14 @@ class World:
 
     def _phase_environment(self) -> None:
         """FASE 4: Actualiza entorno (generador de tráfico, animación orilla, etc)."""
-        # Generador de tráfico probabilístico
-        for lane in self.network.get_all_lanes():
-            zone_params = config.ZONE_TRAFFIC.get(lane.zone, config.ZONE_TRAFFIC['urban'])
-            rate = zone_params['arrival_rate_veh_per_min'] / 60.0
-            prob = rate * config.TICK_DT_S * self.sim_speed_factor
-            if random.random() < prob:
-                self._try_spawn_at_lane_start(lane, zone_params)
+        # Generador de tráfico probabilístico - solo si allow_spawning está habilitado
+        if self.allow_spawning:
+            for lane in self.network.get_all_lanes():
+                zone_params = config.ZONE_TRAFFIC.get(lane.zone, config.ZONE_TRAFFIC['urban'])
+                rate = zone_params['arrival_rate_veh_per_min'] / 60.0
+                prob = rate * config.TICK_DT_S * self.sim_speed_factor
+                if random.random() < prob:
+                    self._try_spawn_at_lane_start(lane, zone_params)
 
         # Animación de agentes en orilla (deshabilitados)
         for agent in list(self.agents.values()):
@@ -347,17 +350,45 @@ class World:
         for lane_id, lane_agents in by_lane.items():
             lane_agents.sort(key=lambda a: a.position_along_lane_s)
 
-            # Detecta solapamientos: si dos agentes consecutivos tienen gap < crítico
-            for i in range(len(lane_agents) - 1):
-                rear = lane_agents[i]
-                front = lane_agents[i + 1]
-                gap = front.position_along_lane_s - rear.position_along_lane_s
+            # Detecta solapamientos basado en componente forward del carril
+            try:
+                lane = self.network.get_lane(lane_id)
 
-                if gap < config.CAR_LENGTH_M * config.COLLISION_OVERLAP_RATIO:
-                    if not rear.is_disabled:
-                        self._disable_agent(rear)
-                    if not front.is_disabled:
-                        self._disable_agent(front)
+                # Calcula dirección forward del carril (desde primer waypoint al último)
+                if len(lane.waypoints) >= 2:
+                    lane_start = lane.waypoints[0].position
+                    lane_end = lane.waypoints[-1].position
+                    lane_forward = (lane_end - lane_start).normalize()
+                else:
+                    # Fallback: usar heading del primer waypoint
+                    heading = lane.waypoints[0].heading if lane.waypoints else 0.0
+                    lane_forward = Vector2(math.cos(heading), math.sin(heading))
+
+                lane_origin = lane.waypoints[0].position if lane.waypoints else Vector2(0, 0)
+
+                for i in range(len(lane_agents) - 1):
+                    rear = lane_agents[i]
+                    front = lane_agents[i + 1]
+
+                    # Calcula posiciones world del frente y trasero de cada carro
+                    rear_rear_pos = lane.world_position_at(rear.position_along_lane_s - config.CAR_LENGTH_M / 2.0, rear.lateral_offset)
+                    rear_front_pos = lane.world_position_at(rear.position_along_lane_s + config.CAR_LENGTH_M / 2.0, rear.lateral_offset)
+                    front_rear_pos = lane.world_position_at(front.position_along_lane_s - config.CAR_LENGTH_M / 2.0, front.lateral_offset)
+                    front_front_pos = lane.world_position_at(front.position_along_lane_s + config.CAR_LENGTH_M / 2.0, front.lateral_offset)
+
+                    # Proyecta en dirección forward
+                    rear_front_proj = (rear_front_pos - lane_origin).dot(lane_forward)
+                    front_rear_proj = (front_rear_pos - lane_origin).dot(lane_forward)
+
+                    # Colisión si front_rear_proj < rear_front_proj (hay solapamiento)
+                    if front_rear_proj < rear_front_proj:
+                        if not rear.is_disabled:
+                            self._disable_agent(rear)
+                        if not front.is_disabled:
+                            self._disable_agent(front)
+            except ValueError:
+                # Carril no existe
+                pass
 
     def _phase_statistics(self) -> None:
         """FASE 6: Recolecta estadisticas (observador puro)."""

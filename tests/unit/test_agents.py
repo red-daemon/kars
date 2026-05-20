@@ -1,5 +1,9 @@
 """Tests unitarios para Perception, CarAgent, SpatialGrid."""
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 import math
 from kars.physics.models import Vector2, KinematicState, PhysicsBody, Waypoint
 from kars.agents.perception import PerceptionData, PerceptionModule

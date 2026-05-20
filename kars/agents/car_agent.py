@@ -50,26 +50,23 @@ class CarAgent:
         comfortable_decel_ms2=config.COMFORTABLE_DECEL_MS2,
     ))
 
-    # Tolerancia individual: +/- variación respecto a velocidad deseada
-    speed_tolerance_kmh: float = 0.0
+    # Multiplicador de velocidad: personalidad del conductor respecto al límite de la calle
+    # Muestreado de distribución Normal. E.g., 0.8 = 80% del límite, 1.2 = 120% del límite
+    speed_multiplier: float = 1.0
 
     # Estado de colisión
     is_disabled: bool = False          # True si está en estado de colisión
     disable_ticks_remaining: int = 0   # Countdown para remoción
     shoulder_offset: float = 0.0       # Offset actual hacia la orilla (m)
 
-    def get_desired_speed_ms(self) -> float:
-        """Velocidad deseada del agente incluyendo tolerancia.
+    def set_desired_speed_from_lane(self, lane_speed_limit_kmh: float) -> None:
+        """Establece velocidad deseada basada en límite de la calle y multiplicador.
 
-        La tolerancia individual permite que cada agente tenga una
-        velocidad deseada ligeramente diferente, generando heterogeneidad.
+        Args:
+            lane_speed_limit_kmh: Límite de velocidad de la calle en km/h
         """
-        base_speed = self.idm_behavior.desired_speed
-
-        # Convierte tolerancia de km/h a m/s
-        tolerance_ms = self.speed_tolerance_kmh / 3.6
-
-        return base_speed + tolerance_ms
+        desired_speed_ms = (lane_speed_limit_kmh * self.speed_multiplier) / 3.6
+        object.__setattr__(self.idm_behavior, 'desired_speed', desired_speed_ms)
 
     def set_position_world(self, pos: Vector2, heading: float = 0.0):
         """Actualiza posición en coordenadas mundo (x, y).
@@ -123,8 +120,8 @@ class CarAgent:
         Returns:
             Aceleración deseada en m/s²
         """
-        # Velocidad deseada incluyendo tolerancia individual
-        desired_speed_ms = self.get_desired_speed_ms()
+        # Velocidad deseada (basada en multiplicador de velocidad del agente)
+        desired_speed_ms = self.idm_behavior.desired_speed
 
         # Actualiza IDM con velocidad deseada del agente
         # (puede ser diferente a la del carril por tolerancia)

@@ -1,5 +1,9 @@
 """Tests unitarios para Lane (sin pytest)."""
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 import math
 from kars.physics.models import Vector2, Waypoint
 from kars.environment.lane import Lane

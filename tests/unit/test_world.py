@@ -1,5 +1,9 @@
 """Tests unitarios para World."""
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from kars.physics.models import Vector2, Waypoint, KinematicState
 from kars.agents.car_agent import CarAgent
 from kars.environment.lane import Lane

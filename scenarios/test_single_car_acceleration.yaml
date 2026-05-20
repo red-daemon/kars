@@ -1,0 +1,23 @@
+name: "Single Car Acceleration"
+description: "Un carro parado durante 3s, luego acelera automáticamente"
+
+road:
+  lanes:
+    - id: "lane_0"
+      start: [0, 0]
+      end: [1000, 0]
+      width_m: 2.7
+      speed_limit_kmh: 50.0
+      zone: "urban"
+
+agents:
+  - id: 1
+    lane: "lane_0"
+    position_s: 100.0
+    initial_velocity_ms: 0.0
+    desired_speed_kmh: 20.0
+    time_headway_s: 1.5
+    max_accel_ms2: 2.0
+
+world:
+  allow_spawning: false

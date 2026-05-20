@@ -30,7 +30,7 @@ class HUD:
             config.HUD_CHART_W,
             config.HUD_CHART_H
         )
-        self.speed_chart = SpeedChart(chart_rect, max_speed_kmh=25.0)
+        self.speed_chart = SpeedChart(chart_rect, max_speed_kmh=50.0)
 
         # Crear UI layer con controles
         self.ui_layer = UILayer()
