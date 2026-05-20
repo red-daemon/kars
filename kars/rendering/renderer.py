@@ -310,10 +310,12 @@ class Renderer:
         # Elige color según velocidad y estado
         if selected:
             color = config.COLOR_CAR_SELECTED
-        elif speed_kmh > 15.0:
-            color = config.COLOR_CAR_FAST
+        elif speed_kmh == 0.0:
+            color = config.COLOR_CAR_STOPPED
         elif speed_kmh < 2.0:
             color = config.COLOR_CAR_SLOW
+        elif speed_kmh > 15.0:
+            color = config.COLOR_CAR_FAST
         else:
             color = config.COLOR_CAR_DEFAULT
 

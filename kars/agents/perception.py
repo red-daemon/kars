@@ -63,6 +63,9 @@ class PerceptionModule:
         Incluye agentes deshabilitados (colisionados) como obstáculos.
         El IDM verá agentes parados (speed=0) con distancia > 0 y frenarán.
 
+        Gap se mide desde la parte delantera del carro que percibe
+        a la parte trasera del carro percibido.
+
         Args:
             agent_id: ID del agente que percibe
             agent_s: Posición a lo largo del carril (metros)
@@ -74,6 +77,8 @@ class PerceptionModule:
         Returns:
             PerceptionData con información del mundo
         """
+        import kars.config as config
+
         # Obtén carril del agente
         try:
             lane = network.get_lane(agent_lane_id)
@@ -87,6 +92,9 @@ class PerceptionModule:
                 speed_limit_kmh=20.0,
                 current_lane_id=agent_lane_id,
             )
+
+        # Posición de la parte delantera del carro que percibe
+        agent_front_s = agent_s + config.CAR_LENGTH_M / 2.0
 
         # Busca el carro más cercano adelante y atrás en el mismo carril
         leader_distance = float("inf")
@@ -104,8 +112,11 @@ class PerceptionModule:
             if other_lane_id != agent_lane_id:
                 continue  # Solo considera agentes en el mismo carril (MVP)
 
-            # Calcula brecha (distancia a lo largo del carril)
-            gap = other_s - agent_s
+            # Posición de la parte trasera del otro carro
+            other_rear_s = other_s - config.CAR_LENGTH_M / 2.0
+
+            # Gap desde la parte delantera del agente a la parte trasera del líder
+            gap = other_rear_s - agent_front_s
 
             # Si está adelante y es el más cercano
             if gap > PerceptionModule.PERCEPTION_TOLERANCE:

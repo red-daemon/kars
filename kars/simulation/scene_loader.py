@@ -102,6 +102,7 @@ class SceneLoader:
             initial_velocity_ms = agent_cfg.get('initial_velocity_ms', 0.0)
             time_headway_s = agent_cfg.get('time_headway_s', 1.5)
             max_accel_ms2 = agent_cfg.get('max_accel_ms2', 2.0)
+            critical_gap_m = agent_cfg.get('critical_gap_m', 5.0)
 
             # Muestrea multiplicador de velocidad desde distribución Normal
             speed_mult_mean = agent_cfg.get('speed_multiplier_mean', 1.0)
@@ -124,6 +125,9 @@ class SceneLoader:
 
             # Establece multiplicador de velocidad
             object.__setattr__(agent, 'speed_multiplier', speed_multiplier)
+
+            # Establece gap crítico (parámetro de comportamiento)
+            object.__setattr__(agent, 'critical_gap_m', critical_gap_m)
 
             # Calcula y configura velocidad deseada basada en límite de calle
             desired_speed_ms = (lane_speed_limit_kmh * speed_multiplier) / 3.6
@@ -187,7 +191,7 @@ class SceneLoader:
             # Crea obstáculo permanente solo una vez en el tick 0
             if tick_number == 0 and not obstacle_created[0]:
                 lane = world.network.get_lane("lane_0")
-                obstacle_s = lane.length_m() * (2.0 / 3.0)
+                obstacle_s = lane.length_m() * 0.9
                 world.add_permanent_obstacle("lane_0", obstacle_s)
                 obstacle_created[0] = True
 

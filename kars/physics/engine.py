@@ -33,10 +33,13 @@ class PhysicsEngine:
         new_velocity = state.velocity + accel_vec * dt_s
 
         new_velocity_mag = new_velocity.magnitude()
-        if new_velocity_mag < 0:
+        # Dead-band: fuerza a 0 si velocidad es imperceptible
+        # Esto también previene reversa accidental por redondeos
+        if new_velocity_mag < 0.001:
             new_velocity = Vector2(0, 0)
 
         # Actualiza posición: x(t+dt) = x(t) + v(t+dt)*dt
+        # Nota: new_velocity ya tiene dead-band aplicado, así que no hay movimiento residual
         new_position = state.position + new_velocity * dt_s
 
         # Actualiza rumbo según dirección de velocidad

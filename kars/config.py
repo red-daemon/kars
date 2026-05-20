@@ -65,8 +65,8 @@ IDM_DESIRED_SPEED_MS = 5.56
 # A 5.56 m/s, 3.0s = ~16.7m de brecha deseada
 IDM_TIME_HEADWAY_S = 3.0
 # Brecha mínima al detenerse (metros)
-# Aumentado de 2.0m a 4.0m para evitar colisiones por redondeo
-IDM_MIN_GAP_M = 4.0
+# 0.5 * CAR_LENGTH_M = 0.5 * 4.5 = 2.25m (distancia reglamentaria)
+IDM_MIN_GAP_M = 2.25
 # Exponente en la fórmula IDM
 IDM_DELTA = 4
 
@@ -124,8 +124,9 @@ HUD_BAR_HEIGHT = 55  # Altura de la barra de controles (bottom)
 
 COLOR_CAR_DEFAULT = (200, 50, 50)    # Rojo oscuro
 COLOR_CAR_LEADER = (200, 100, 100)
-COLOR_CAR_FAST = (255, 200, 0)       # Amarillo: agente a velocidad alta
-COLOR_CAR_SLOW = (100, 100, 200)     # Azul: agente lento/frenando
+COLOR_CAR_FAST = (255, 200, 0)       # Amarillo: agente a velocidad alta (>15 km/h)
+COLOR_CAR_SLOW = (100, 100, 200)     # Azul: agente lento (2-15 km/h)
+COLOR_CAR_STOPPED = (0, 0, 0)        # Negro: agente detenido (<0.1 km/h)
 COLOR_CAR_SELECTED = (255, 255, 0)   # Amarillo brillante: agente en follow mode
 COLOR_LANE_BORDER = (255, 255, 255)  # Blanco: franjas de demarcación
 COLOR_LANE_ROAD = (140, 140, 140)    # Gris claro: superficie de la carretera

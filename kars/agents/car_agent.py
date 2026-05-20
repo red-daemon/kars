@@ -54,6 +54,12 @@ class CarAgent:
     # Muestreado de distribución Normal. E.g., 0.8 = 80% del límite, 1.2 = 120% del límite
     speed_multiplier: float = 1.0
 
+    # Gap crítico: distancia umbral en la que comienza frenado máximo (metros)
+    # Conductores precavidos: 10m (frenan temprano)
+    # Conductores normales: 5m
+    # Conductores agresivos: 2m (casi chocan antes de frenar)
+    critical_gap_m: float = 5.0
+
     # Estado de colisión
     is_disabled: bool = False          # True si está en estado de colisión
     disable_ticks_remaining: int = 0   # Countdown para remoción
@@ -112,7 +118,11 @@ class CarAgent:
     def decide(self, perception: PerceptionData) -> float:
         """Calcula aceleración deseada basada en percepción.
 
-        Usa el modelo IDM de seguimiento vehicular.
+        Usa el modelo IDM de seguimiento vehicular, pero con frenado especial
+        cuando el obstáculo está completamente detenido y cerca.
+
+        Frenado inteligente: mantiene velocidad hasta distancia umbral,
+        luego frena suavemente para detenerse exactamente en min_gap.
 
         Args:
             perception: PerceptionData del mundo
@@ -120,11 +130,38 @@ class CarAgent:
         Returns:
             Aceleración deseada en m/s²
         """
-        # Velocidad deseada (basada en multiplicador de velocidad del agente)
+        current_speed = self.kinematic_state.speed_ms()
+
+        # Distancia umbral para comenzar frenado suave (metros)
+        # Mantiene velocidad hasta esta distancia, luego frena suavemente
+        BRAKING_DISTANCE_M = 30.0
+
+        # Detección de frenado especial: obstáculo parado y cerca
+        if (perception.leader_speed_ms == 0.0 and
+            perception.leader_distance_m < BRAKING_DISTANCE_M and
+            current_speed > 0.05):  # Solo si estamos en movimiento
+
+            # FASE 3: Frenado máximo si está demasiado cerca (crítico)
+            if perception.leader_distance_m <= self.critical_gap_m:
+                # Frenado máximo permitido por los frenos
+                return -self.idm_behavior.comfortable_decel
+
+            # FASE 2: Frenado suave calculado para detenerse en min_gap
+            # Usar cinemática: v_final² = v_inicial² + 2*a*d
+            # 0 = v² + 2*a*d → a = -v² / (2*d)
+            gap_to_brake = perception.leader_distance_m - self.idm_behavior.min_gap
+
+            if gap_to_brake > 0.001:  # Asegurar que hay espacio para frenar
+                import math
+                accel = -current_speed * current_speed / (2.0 * gap_to_brake)
+                # Limita a frenado máximo cómodo (no es una emergencia aún)
+                accel = max(accel, -self.idm_behavior.comfortable_decel)
+                return accel
+
+        # Caso normal: usar IDM
         desired_speed_ms = self.idm_behavior.desired_speed
 
         # Actualiza IDM con velocidad deseada del agente
-        # (puede ser diferente a la del carril por tolerancia)
         idm_with_tolerance = IDMBehavior(
             desired_speed_ms=desired_speed_ms,
             time_headway_s=self.idm_behavior.time_headway,
@@ -136,7 +173,7 @@ class CarAgent:
 
         # Calcula aceleración usando IDM
         desired_accel = idm_with_tolerance.compute_acceleration(
-            current_speed_ms=self.kinematic_state.speed_ms(),
+            current_speed_ms=current_speed,
             leader_distance_m=perception.leader_distance_m,
             leader_speed_ms=perception.leader_speed_ms,
         )
