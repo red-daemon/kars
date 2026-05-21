@@ -1,12 +1,12 @@
 {
-  "name": "Collision Chain - Hidden Obstacle",
-  "description": "Carro A en s=50m viaja a 60 km/h. Después de 2s, aparece un obstáculo adelante. Carro C en s=0m intenta frenar a tiempo. Validar cadena de colisiones.",
+  "name": "Collision Chain - Hidden Car",
+  "description": "Carro A en s=50m viaja a 60 km/h. Después de 2s, aparece Carro B parado en s=120m. Carro A colisiona sin tiempo para frenar. Carro C en s=0m frena ante A deshabilitado. Validar cadena de colisiones.",
   "road": {
     "lanes": [
       {
         "id": "lane_0",
         "start": [0, 0],
-        "end": [200, 0],
+        "end": [150, 0],
         "width_m": 2.7,
         "speed_limit_kmh": 60.0,
         "zone": "urban"

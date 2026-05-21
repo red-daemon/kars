@@ -315,6 +315,59 @@ class Renderer:
         text_end = font.render(f"{lane_length_m:.0f}m", True, line_color)
         self.screen.blit(text_end, (int(end_screen[0]) - 35, int(end_screen[1]) + line_height + 5))
 
+    def draw_speed_limit_sign(self, snapshot: RenderSnapshot) -> None:
+        """Dibuja indicador de límite de velocidad a 10m del inicio de cada carril.
+
+        Cuadrado blanco pequeño con número negro indicando velocidad en km/h.
+        Posicionado fuera de la calle (arriba) con margen reducido.
+
+        Args:
+            snapshot: RenderSnapshot con información de lanes
+        """
+        if not snapshot.lanes:
+            return
+
+        # Dibuja para cada carril
+        for lane_id, waypoints, width_m in snapshot.lanes:
+            if len(waypoints) < 2:
+                continue
+
+            # Posición: 10m desde el inicio del carril
+            sign_position_s = 10.0
+            sign_world_pos = Vector2(waypoints[0][0] + sign_position_s, waypoints[0][1])
+
+            # Convierte a pantalla
+            sign_screen = self.viewport.world_to_screen(sign_world_pos)
+
+            # Obtiene velocidad límite del carril desde la escena
+            try:
+                lane = self.world.network.get_lane(lane_id)
+                speed_limit_kmh = int(lane.speed_limit_kmh)
+            except:
+                speed_limit_kmh = 60
+
+            # Dimensiones del cuadrado (3/4 del tamaño anterior: 30 * 0.75 ≈ 23)
+            sign_size = 20
+
+            # Offset hacia arriba (fuera de la calle) con margen reducido a la mitad
+            offset_y = -40
+
+            # Dibuja cuadrado blanco fuera de la calle
+            rect = pygame.Rect(
+                int(sign_screen[0]) - sign_size // 2,
+                int(sign_screen[1]) + offset_y - sign_size // 2,
+                sign_size,
+                sign_size
+            )
+            pygame.draw.rect(self.screen, (255, 255, 255), rect)  # Blanco
+            pygame.draw.rect(self.screen, (0, 0, 0), rect, 2)    # Borde negro
+
+            # Dibuja número en negro
+            font = pygame.font.Font(None, 16)
+            text = font.render(str(speed_limit_kmh), True, (0, 0, 0))
+            text_rect = text.get_rect(center=(int(sign_screen[0]), int(sign_screen[1]) + offset_y))
+            self.screen.blit(text, text_rect)
+
     def draw_lane_cached(self, snapshot: RenderSnapshot) -> None:
         """Dibuja lanes usando cache estático.
 
@@ -629,6 +682,9 @@ class Renderer:
 
         # Dibuja marcadores de distancia (inicio y final de pista)
         self.draw_distance_markers(snapshot)
+
+        # Dibuja indicador de límite de velocidad
+        self.draw_speed_limit_sign(snapshot)
 
         # Dibuja obstáculos permanentes
         self.draw_obstacles(snapshot)

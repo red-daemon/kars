@@ -208,19 +208,47 @@ class SceneLoader:
         """Callback para escena de cadena de colisiones.
 
         - Carro A empieza en s=50m a 60 km/h (16.67 m/s)
-        - Después de 2s (80 ticks a 25ms), agrega obstáculo en s=120m
         - Carro C en s=0m intenta frenar a tiempo
+        - En tick 120 (3s), aparece Carro B parado en s=120m
+        - Carro A no tiene tiempo de frenar y colisiona
         """
-        obstacle_created = [False]
+        from kars.physics.models import Vector2, KinematicState
+
+        carro_b_created = [False]
 
         def on_tick_collision_chain(world, tick_number):
-            # Crea obstáculo en tick 80 (2 segundos = 80 * 25ms = 2000ms)
-            if tick_number == 80 and not obstacle_created[0]:
+            # Crea Carro B en tick 120 (3 segundos = 120 * 25ms = 3000ms)
+            if tick_number == 120 and not carro_b_created[0]:
                 try:
-                    world.add_permanent_obstacle("lane_0", 120.0)
-                    obstacle_created[0] = True
-                except Exception:
-                    pass
+                    # Obtiene lane
+                    lane = world.network.get_lane("lane_0")
+
+                    # Crea Carro B parado en s=120m
+                    carro_b = CarAgent(
+                        agent_id=world.get_next_agent_id(),
+                        current_lane_id="lane_0",
+                        position_along_lane_s=120.0,
+                        lateral_offset=0.0,
+                    )
+
+                    # Posiciona en mundo
+                    world_pos = lane.world_position_at(120.0, 0.0)
+                    heading = lane.heading_at(120.0)
+
+                    # Estado cinemático: parado
+                    kinematic_state = KinematicState(
+                        position=world_pos,
+                        velocity=Vector2(0.0, 0.0),
+                        acceleration=Vector2(0, 0),
+                        heading=heading,
+                    )
+                    object.__setattr__(carro_b, 'kinematic_state', kinematic_state)
+
+                    # Agrega al mundo
+                    world.add_agent(carro_b)
+                    carro_b_created[0] = True
+                except Exception as e:
+                    print(f"Error creando Carro B: {e}")
 
         return on_tick_collision_chain
 
