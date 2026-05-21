@@ -204,6 +204,27 @@ class SceneLoader:
         return on_tick_multi_lane
 
     @staticmethod
+    def _create_collision_chain_callback():
+        """Callback para escena de cadena de colisiones.
+
+        - Carro A empieza en s=50m a 60 km/h (16.67 m/s)
+        - Después de 2s (80 ticks a 25ms), agrega obstáculo en s=120m
+        - Carro C en s=0m intenta frenar a tiempo
+        """
+        obstacle_created = [False]
+
+        def on_tick_collision_chain(world, tick_number):
+            # Crea obstáculo en tick 80 (2 segundos = 80 * 25ms = 2000ms)
+            if tick_number == 80 and not obstacle_created[0]:
+                try:
+                    world.add_permanent_obstacle("lane_0", 120.0)
+                    obstacle_created[0] = True
+                except Exception:
+                    pass
+
+        return on_tick_collision_chain
+
+    @staticmethod
     def load_scene(filepath: str) -> SceneSetup:
         """Carga escena completa desde JSON.
 
@@ -232,7 +253,9 @@ class SceneLoader:
         world_config = config.get('world', {})
 
         # Detecta tipo de escena y aplica callback apropiado
-        if "multi" in name.lower() or "lane" in name.lower():
+        if "collision chain" in name.lower():
+            on_tick_callback = SceneLoader._create_collision_chain_callback()
+        elif "multi" in name.lower() or "lane" in name.lower():
             on_tick_callback = SceneLoader._create_multi_lane_callback()
         elif "obstacle" in name.lower() or "avoidance" in description.lower():
             on_tick_callback = SceneLoader._create_obstacle_avoidance_callback()
