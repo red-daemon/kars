@@ -65,6 +65,11 @@ class CarAgent:
     disable_ticks_remaining: int = 0   # Countdown para remoción
     shoulder_offset: float = 0.0       # Offset actual hacia la orilla (m)
 
+    # Debug: track de estado anterior para imprimir cambios
+    _last_braking_mode: str = "none"   # "none", "cruise", "soft_brake", "hard_brake", "stopped"
+    _last_mode_tick: int = 0           # Tick en que cambió el modo
+    _last_mode_speed_ms: float = 0.0   # Velocidad cuando cambió el modo
+
     def set_desired_speed_from_lane(self, lane_speed_limit_kmh: float) -> None:
         """Establece velocidad deseada basada en límite de la calle y multiplicador.
 
@@ -115,7 +120,7 @@ class CarAgent:
         )
         object.__setattr__(self, 'kinematic_state', new_state)
 
-    def decide(self, perception: PerceptionData) -> float:
+    def decide(self, perception: PerceptionData, tick_number: int = 0) -> float:
         """Calcula aceleración deseada basada en percepción.
 
         Usa el modelo IDM de seguimiento vehicular, pero con frenado especial
@@ -126,37 +131,99 @@ class CarAgent:
 
         Args:
             perception: PerceptionData del mundo
+            tick_number: Número de tick actual (para debug)
 
         Returns:
             Aceleración deseada en m/s²
         """
         current_speed = self.kinematic_state.speed_ms()
+        current_braking_mode = "none"
 
         # Distancia umbral para comenzar frenado suave (metros)
-        # Mantiene velocidad hasta esta distancia, luego frena suavemente
         BRAKING_DISTANCE_M = 30.0
 
-        # Detección de frenado especial: obstáculo parado y cerca
-        if (perception.leader_speed_ms == 0.0 and
-            perception.leader_distance_m < BRAKING_DISTANCE_M and
-            current_speed > 0.05):  # Solo si estamos en movimiento
+        # Obstáculo parado cerca: usar frenado cinemático
+        if perception.leader_speed_ms == 0.0 and perception.leader_distance_m < BRAKING_DISTANCE_M:
+            current_braking_mode = "stopped" if current_speed < 0.1 else "braking"
 
-            # FASE 3: Frenado máximo si está demasiado cerca (crítico)
-            if perception.leader_distance_m <= self.critical_gap_m:
-                # Frenado máximo permitido por los frenos
-                return -self.idm_behavior.comfortable_decel
+            # Calcula posición de la línea imaginaria (a un carro completo antes del obstáculo)
+            # Se apunta a esta línea; si se pasa ~medio carro, terminará en min_gap correcto
+            agent_front_s = self.position_along_lane_s + config.CAR_LENGTH_M / 2.0
+            obstacle_rear_s = agent_front_s + perception.leader_distance_m
+            stop_line_s = obstacle_rear_s - config.CAR_LENGTH_M
 
-            # FASE 2: Frenado suave calculado para detenerse en min_gap
-            # Usar cinemática: v_final² = v_inicial² + 2*a*d
-            # 0 = v² + 2*a*d → a = -v² / (2*d)
-            gap_to_brake = perception.leader_distance_m - self.idm_behavior.min_gap
+            # Gap desde frente del carro hasta la línea imaginaria
+            gap_to_target = stop_line_s - agent_front_s
 
-            if gap_to_brake > 0.001:  # Asegurar que hay espacio para frenar
-                import math
-                accel = -current_speed * current_speed / (2.0 * gap_to_brake)
-                # Limita a frenado máximo cómodo (no es una emergencia aún)
+            # Debug: muestra cálculo de posiciones
+            if tick_number % 50 == 0:  # Cada 50 ticks
+                print(f"[BRAKING CALC TICK {tick_number}] Agent {self.agent_id}: "
+                      f"agent_center={self.position_along_lane_s:.2f}m, "
+                      f"agent_front={agent_front_s:.2f}m, "
+                      f"gap_rear_to_obstacle={perception.leader_distance_m:.2f}m, "
+                      f"obstacle_rear={obstacle_rear_s:.2f}m, "
+                      f"min_gap={self.idm_behavior.min_gap:.2f}m, "
+                      f"stop_line={stop_line_s:.2f}m, "
+                      f"gap_to_target={gap_to_target:.2f}m")
+
+            if current_speed < 0.5:
+                # Velocidad baja: fuerza a exactamente 0 en el siguiente frame
+                accel = -current_speed / config.TICK_DT_S if current_speed > 0 else 0.0
+            elif gap_to_target > 2.0:
+                # Frenado cinemático puro: a = -v²/(2*gap)
+                accel = -current_speed * current_speed / (2.0 * gap_to_target)
+                # Limita a máximo frenado confortable
                 accel = max(accel, -self.idm_behavior.comfortable_decel)
-                return accel
+            elif gap_to_target > 0.0:
+                # Muy cerca (< 2m): máximo frenado para evitar paradoja de Zenón
+                accel = -self.idm_behavior.comfortable_decel
+            else:
+                # Ya pasó/está en la línea: máximo frenado de emergencia
+                accel = -self.idm_behavior.comfortable_decel
+
+            # Debug: imprime solo cuando cambia de modo
+            if current_braking_mode != self._last_braking_mode:
+                old_mode = self._last_braking_mode
+                ticks_in_mode = tick_number - self._last_mode_tick
+                time_in_mode_s = ticks_in_mode * config.TICK_DT_S
+                avg_accel = (current_speed - self._last_mode_speed_ms) / time_in_mode_s if time_in_mode_s > 0 else 0.0
+                gap_center_to_center = perception.leader_distance_m + config.CAR_LENGTH_M
+
+                object.__setattr__(self, '_last_braking_mode', current_braking_mode)
+                object.__setattr__(self, '_last_mode_tick', tick_number)
+                object.__setattr__(self, '_last_mode_speed_ms', current_speed)
+
+                # Comparación con línea de STOP HERE
+                agent_front_s = self.position_along_lane_s + config.CAR_LENGTH_M / 2.0
+                obstacle_rear_s = agent_front_s + perception.leader_distance_m
+                stop_line_s = obstacle_rear_s - config.IDM_MIN_GAP_M
+                agent_center_s = self.position_along_lane_s
+                overshoot = agent_center_s - stop_line_s
+
+                print(f"[Tick {tick_number}] Agent {self.agent_id}: {old_mode} → {current_braking_mode} | "
+                      f"Modo duró {time_in_mode_s:.3f}s, a_prom={avg_accel:.2f}m/s² | "
+                      f"gap_rear={perception.leader_distance_m:.2f}m, center-to-center={gap_center_to_center:.2f}m, "
+                      f"speed={current_speed*3.6:.1f}km/h, a_actual={accel:.2f}m/s² | "
+                      f"STOP LINE at {stop_line_s:.2f}m, agent center at {agent_center_s:.2f}m, overshoot={overshoot:+.2f}m")
+
+            return accel
+        else:
+            # Fuera de zona de frenado especial
+            if self._last_braking_mode != "none":
+                old_mode = self._last_braking_mode
+                ticks_in_mode = tick_number - self._last_mode_tick
+                time_in_mode_s = ticks_in_mode * config.TICK_DT_S
+                avg_accel = (current_speed - self._last_mode_speed_ms) / time_in_mode_s if time_in_mode_s > 0 else 0.0
+                gap_center_to_center = perception.leader_distance_m + config.CAR_LENGTH_M
+
+                object.__setattr__(self, '_last_braking_mode', "none")
+                object.__setattr__(self, '_last_mode_tick', tick_number)
+                object.__setattr__(self, '_last_mode_speed_ms', current_speed)
+
+                print(f"[Tick {tick_number}] Agent {self.agent_id}: {old_mode} → none | "
+                      f"Modo duró {time_in_mode_s:.3f}s, a_prom={avg_accel:.2f}m/s² | "
+                      f"gap_rear={perception.leader_distance_m:.2f}m, center-to-center={gap_center_to_center:.2f}m, "
+                      f"speed={current_speed*3.6:.1f}km/h")
 
         # Caso normal: usar IDM
         desired_speed_ms = self.idm_behavior.desired_speed

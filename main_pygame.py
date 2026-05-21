@@ -62,16 +62,32 @@ def main(scene_name: str = "test_single_car_acceleration"):
     print("  Q/Esc: Salir")
 
     print("\n[Renderizado] Iniciando Pygame...")
-    renderer = Renderer()
+    renderer = Renderer(scene_filepath=str(scenario_file))
 
     print("\n[Running] Simulación en vivo...")
+    print("  Tecla R: Resetear escenario")
     frame_count = 0
     try:
         while renderer.running:
             frame_count += 1
             try:
                 if not renderer.run_frame(world):
-                    break
+                    if renderer.reset_requested:
+                        print("\n[Reset] Recargando escena...")
+                        renderer.reset_requested = False
+                        renderer.running = True
+                        renderer.initial_zoom_done = False
+
+                        # Recarga la escena
+                        scene = SceneLoader.load_scene(str(scenario_file))
+                        world = World(scene.network, on_tick_callback=scene.on_tick, **scene.world_config)
+
+                        for agent in scene.initial_agents:
+                            world.add_agent(agent)
+
+                        frame_count = 0
+                    else:
+                        break
             except Exception as frame_error:
                 print(f"\n[Frame Error] Frame #{frame_count}: {frame_error}")
                 import traceback

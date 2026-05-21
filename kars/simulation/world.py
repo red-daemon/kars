@@ -248,7 +248,7 @@ class World:
             perception = getattr(agent, '_last_perception', None)
             if perception is not None:
                 # Agente decide aceleracion basada en percepcion
-                agent._desired_accel = agent.decide(perception)
+                agent._desired_accel = agent.decide(perception, self.tick_number)
             else:
                 agent._desired_accel = 0.0
 

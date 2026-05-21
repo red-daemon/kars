@@ -167,27 +167,11 @@ class SceneLoader:
     def _create_obstacle_avoidance_callback():
         """Callback especial para escena de evasión de obstáculos.
 
-        - Congela carro los primeros 3 segundos
-        - Crea obstáculo permanente a 2/3 de la calle en tick 0
+        - Crea obstáculo permanente a 90% de la calle en tick 0
         """
-        from kars.physics.models import Vector2, KinematicState
-
-        freeze_ticks = 60  # 3 segundos a 40 ticks/s
         obstacle_created = [False]
 
         def on_tick_obstacle_avoidance(world, tick_number):
-            # Congela el carro los primeros 3 segundos
-            if tick_number < freeze_ticks:
-                for agent in world.agents.values():
-                    if not agent.is_disabled:
-                        frozen_state = KinematicState(
-                            position=agent.kinematic_state.position,
-                            velocity=Vector2(0.0, 0.0),
-                            acceleration=Vector2(0.0, 0.0),
-                            heading=agent.kinematic_state.heading,
-                        )
-                        object.__setattr__(agent, 'kinematic_state', frozen_state)
-
             # Crea obstáculo permanente solo una vez en el tick 0
             if tick_number == 0 and not obstacle_created[0]:
                 lane = world.network.get_lane("lane_0")
@@ -196,6 +180,28 @@ class SceneLoader:
                 obstacle_created[0] = True
 
         return on_tick_obstacle_avoidance
+
+    @staticmethod
+    def _create_multi_lane_callback():
+        """Callback especial para escena multi-carril.
+
+        - Crea obstáculos permanentes al 90% en cada carril
+        """
+        obstacles_created = [False]
+
+        def on_tick_multi_lane(world, tick_number):
+            # Crea obstáculos en todos los carriles en el tick 0
+            if tick_number == 0 and not obstacles_created[0]:
+                try:
+                    for lane_id in ["lane_0", "lane_1", "lane_2"]:
+                        lane = world.network.get_lane(lane_id)
+                        obstacle_s = lane.length_m() * 0.9
+                        world.add_permanent_obstacle(lane_id, obstacle_s)
+                    obstacles_created[0] = True
+                except Exception:
+                    pass
+
+        return on_tick_multi_lane
 
     @staticmethod
     def load_scene(filepath: str) -> SceneSetup:
@@ -226,25 +232,16 @@ class SceneLoader:
         world_config = config.get('world', {})
 
         # Detecta tipo de escena y aplica callback apropiado
-        if "obstacle" in name.lower() or "avoidance" in description.lower():
+        if "multi" in name.lower() or "lane" in name.lower():
+            on_tick_callback = SceneLoader._create_multi_lane_callback()
+        elif "obstacle" in name.lower() or "avoidance" in description.lower():
             on_tick_callback = SceneLoader._create_obstacle_avoidance_callback()
         else:
-            # Escena default - solo freeze
-            freeze_ticks = 60
+            # Escena default - sin congelamiento
+            def on_tick_default(world, tick_number):
+                pass
 
-            def on_tick_freeze_initial(world, tick_number):
-                if tick_number < freeze_ticks:
-                    for agent in world.agents.values():
-                        if not agent.is_disabled:
-                            frozen_state = KinematicState(
-                                position=agent.kinematic_state.position,
-                                velocity=Vector2(0.0, 0.0),
-                                acceleration=Vector2(0.0, 0.0),
-                                heading=agent.kinematic_state.heading,
-                            )
-                            object.__setattr__(agent, 'kinematic_state', frozen_state)
-
-            on_tick_callback = on_tick_freeze_initial
+            on_tick_callback = on_tick_default
 
         return SceneSetup(
             name=name,

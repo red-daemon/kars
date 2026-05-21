@@ -6,7 +6,7 @@
       {
         "id": "lane_0",
         "start": [0, 0],
-        "end": [100, 0],
+        "end": [150, 0],
         "width_m": 2.7,
         "speed_limit_kmh": 40.0,
         "zone": "urban"
@@ -18,11 +18,12 @@
       "id": 1,
       "lane": "lane_0",
       "position_s": 10.0,
-      "initial_velocity_ms": 0.0,
+      "initial_velocity_ms": 11.11,
       "speed_multiplier_mean": 1.0,
       "speed_multiplier_stddev": 0.05,
       "time_headway_s": 1.5,
-      "max_accel_ms2": 2.0
+      "max_accel_ms2": 2.0,
+      "critical_gap_m": 5.0
     }
   ],
   "world": {

@@ -24,12 +24,14 @@ class Renderer:
     """
 
     def __init__(self, width_px: int = config.WINDOW_WIDTH_PX,
-                 height_px: int = config.WINDOW_HEIGHT_PX):
+                 height_px: int = config.WINDOW_HEIGHT_PX,
+                 scene_filepath: str = None):
         """Inicializa renderer.
 
         Args:
             width_px: Ancho de ventana
             height_px: Alto de ventana
+            scene_filepath: Ruta al archivo JSON de la escena (para resetear)
         """
         pygame.init()
 
@@ -58,6 +60,8 @@ class Renderer:
 
         self.running = True
         self.initial_zoom_done = False
+        self.scene_filepath = scene_filepath
+        self.reset_requested = False
 
     def _build_lanes_cache(self, snapshot: RenderSnapshot) -> pygame.Surface:
         """Construye una surface con todos los lanes dibujados.
@@ -190,6 +194,47 @@ class Renderer:
             draw_strip(surface, config.COLOR_LANE_BORDER, offset_stripe_right_inner, offset_stripe_right_outer, min_width_px=2)
 
         return surface
+
+    def draw_stopping_line(self, snapshot: RenderSnapshot) -> None:
+        """Dibuja línea blanca vertical donde deberían detenerse los vehículos.
+
+        Posición: centro del carro a (CAR_LENGTH_M + min_gap) antes del obstáculo
+        - Parte trasera del obstáculo: s - CAR_LENGTH_M/2
+        - Gap mínimo: min_gap
+        - Parte delantera del carro debe estar en: (s - CAR_LENGTH_M/2) - min_gap
+        - Centro del carro: parte_delantera - CAR_LENGTH_M/2
+
+        Args:
+            snapshot: RenderSnapshot con obstáculos
+        """
+        import kars.config as config
+        MIN_GAP_M = config.IDM_MIN_GAP_M  # 2.25m = 0.5 * CAR_LENGTH_M
+        CAR_LENGTH_M = config.CAR_LENGTH_M  # 4.5m
+
+        for world_pos, lane_id, s in snapshot.obstacles:
+            # Centro del carro debe estar a: CAR_LENGTH_M + MIN_GAP_M antes del obstáculo
+            stop_s = s - CAR_LENGTH_M - MIN_GAP_M
+            if stop_s >= 0:
+                try:
+                    # Calcula posición en mundo donde deberían detenerse
+                    stop_world_pos = Vector2(world_pos.x - (s - stop_s), world_pos.y)
+                    screen_x, screen_y = self.viewport.world_to_screen(stop_world_pos)
+
+                    # Dibuja una línea blanca vertical donde deberían detenerse
+                    line_color = (200, 200, 200)  # Blanco (línea de parada)
+                    line_width = 3
+
+                    # Línea vertical en pantalla
+                    pygame.draw.line(self.screen, line_color,
+                                   (int(screen_x), int(screen_y) - 100),
+                                   (int(screen_x), int(screen_y) + 100), line_width)
+
+                    # Etiqueta
+                    font = pygame.font.Font(None, 12)
+                    text = font.render("STOP HERE", True, line_color)
+                    self.screen.blit(text, (int(screen_x) - 30, int(screen_y) - 110))
+                except Exception:
+                    pass
 
     def draw_obstacles(self, snapshot: RenderSnapshot) -> None:
         """Dibuja símbolos para obstáculos permanentes.
@@ -420,6 +465,10 @@ class Renderer:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
                     return False
+                if event.key == pygame.K_r:
+                    # Reset del escenario
+                    self.reset_requested = True
+                    return False  # Sale del loop para resetear
 
 
             # Left click: spawn agente
@@ -453,8 +502,9 @@ class Renderer:
                     world_pos_snapped = lane.world_position_at(s, 0.0)
                     agent.set_position_world(world_pos_snapped, heading=0.0)
 
-                    # Establece velocidad inicial (0 m/s - el carro empieza parado)
-                    initial_velocity_ms = 0.0
+                    # Establece velocidad inicial = velocidad deseada del carril
+                    # Así el carro avanza con precaución respetando obstáculos
+                    initial_velocity_ms = desired_speed_ms
                     new_kinematic_state = KinematicState(
                         position=world_pos_snapped,
                         velocity=Vector2(initial_velocity_ms, 0.0),
@@ -522,24 +572,33 @@ class Renderer:
         #     avg_world_pos = lane.world_position_at(avg_s, 0.0)
         #     self.viewport.camera.center_on(avg_world_pos)
 
-        # Configuración inicial: centra en el carril (solo una vez)
+        # Configuración inicial: centra en todas las calles (solo una vez)
         if not self.initial_zoom_done and len(snapshot.lanes) > 0:
-            lane_id, waypoints, width_m = snapshot.lanes[0]
-            lane_length_m = sum(
-                math.sqrt((waypoints[i+1][0] - waypoints[i][0])**2 +
-                         (waypoints[i+1][1] - waypoints[i][1])**2)
-                for i in range(len(waypoints)-1)
-            )
+            # Calcula bounding box de todas las calles
+            min_x, max_x = float('inf'), float('-inf')
+            min_y, max_y = float('inf'), float('-inf')
 
-            # Calcula zoom para que la calle completa (0 a lane_length_m) quepa en pantalla
-            # Queremos: lane_length_m * SCALE_PX_PER_M * zoom = width_px
+            for lane_id, waypoints, width_m in snapshot.lanes:
+                for wx, wy in waypoints:
+                    min_x = min(min_x, wx)
+                    max_x = max(max_x, wx)
+                    min_y = min(min_y, wy - width_m/2)
+                    max_y = max(max_y, wy + width_m/2)
+
+            lane_length_m = max_x - min_x
+            lane_height_m = max_y - min_y
+
+            # Calcula zoom para que todo quepa en pantalla
+            # Usa dimensión más restrictiva (la que más espacio ocupa en píxeles)
             scale_px_per_m = config.SCALE_PX_PER_M
-            required_zoom = self.width_px / (lane_length_m * scale_px_per_m)
+            zoom_x = self.width_px / (lane_length_m * scale_px_per_m)
+            zoom_y = self.height_px / (lane_height_m * scale_px_per_m)
+            required_zoom = min(zoom_x, zoom_y)
             self.viewport.camera.set_zoom(required_zoom)
 
-            # Centra en el medio de la calle
-            center_x = lane_length_m / 2.0
-            center_y = 0.0
+            # Centra en el medio del bounding box
+            center_x = (min_x + max_x) / 2.0
+            center_y = (min_y + max_y) / 2.0
             self.viewport.camera.center_on(Vector2(center_x, center_y))
 
             self.initial_zoom_done = True
@@ -573,6 +632,9 @@ class Renderer:
 
         # Dibuja obstáculos permanentes
         self.draw_obstacles(snapshot)
+
+        # Dibuja línea de parada (blanca) donde deberían detenerse los vehículos
+        self.draw_stopping_line(snapshot)
 
         # Actualiza FPS
         self.update_fps(snapshot)
