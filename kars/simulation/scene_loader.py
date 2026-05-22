@@ -129,6 +129,11 @@ class SceneLoader:
             # Establece multiplicador de velocidad
             object.__setattr__(agent, 'speed_multiplier', speed_multiplier)
 
+            # Guarda parámetros para recalcular en respawn (distribución normal)
+            object.__setattr__(agent, '_speed_multiplier_mean', speed_mult_mean)
+            object.__setattr__(agent, '_speed_multiplier_stddev', speed_mult_stddev)
+            object.__setattr__(agent, '_lane_speed_limit_kmh', lane_speed_limit_kmh)
+
             # Establece gap crítico (parámetro de comportamiento)
             object.__setattr__(agent, 'critical_gap_m', critical_gap_m)
 

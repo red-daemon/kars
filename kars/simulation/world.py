@@ -121,13 +121,17 @@ class World:
     def _set_agent_template(self, agent: CarAgent) -> None:
         """Guarda parámetros de un agente como template para futuros spawns.
 
+        Nota: speed_multiplier se recalcula aleatoriamente en cada spawn.
+
         Args:
             agent: Agente de referencia
         """
         self.agent_template = {
             'lane_id': agent.current_lane_id,
             'speed_multiplier': agent.speed_multiplier,
-            'idm_desired_speed': agent.idm_behavior.desired_speed,
+            'speed_multiplier_mean': getattr(agent, '_speed_multiplier_mean', 1.0),
+            'speed_multiplier_stddev': getattr(agent, '_speed_multiplier_stddev', 0.2),
+            'lane_speed_limit_kmh': getattr(agent, '_lane_speed_limit_kmh', 50.0),
             'idm_time_headway': agent.idm_behavior.time_headway,
             'idm_max_accel': agent.idm_behavior.max_accel,
             'critical_gap_m': agent.critical_gap_m,
@@ -156,18 +160,26 @@ class World:
                 lateral_offset=0.0,
             )
 
-            # Asigna parámetros del template
-            object.__setattr__(agent, 'speed_multiplier', self.agent_template['speed_multiplier'])
+            # Recalcula speed_multiplier aleatoriamente (no copia del template)
+            speed_mult_mean = self.agent_template.get('speed_multiplier_mean', 1.0)
+            speed_mult_stddev = self.agent_template.get('speed_multiplier_stddev', 0.2)
+            speed_multiplier = random.gauss(speed_mult_mean, speed_mult_stddev)
+            speed_multiplier = max(0.5, min(1.5, speed_multiplier))
+
+            object.__setattr__(agent, 'speed_multiplier', speed_multiplier)
             object.__setattr__(agent, 'critical_gap_m', self.agent_template['critical_gap_m'])
             object.__setattr__(agent, 'stop_sign_wait_mean_s', self.agent_template['stop_sign_wait_mean_s'])
             object.__setattr__(agent, 'stop_sign_wait_stddev_s', self.agent_template['stop_sign_wait_stddev_s'])
             object.__setattr__(agent, 'stop_sign_buffer_m', self.agent_template['stop_sign_buffer_m'])
 
-            # Configura IDM
+            # Configura IDM con velocidad deseada basada en nuevo multiplicador
+            lane_speed_limit_kmh = self.agent_template.get('lane_speed_limit_kmh', 50.0)
+            desired_speed_ms = (lane_speed_limit_kmh * speed_multiplier) / 3.6
+
             object.__setattr__(
                 agent.idm_behavior,
                 'desired_speed',
-                self.agent_template['idm_desired_speed']
+                desired_speed_ms
             )
             object.__setattr__(
                 agent.idm_behavior,
@@ -185,8 +197,8 @@ class World:
             heading = lane.heading_at(0.1)
             agent.set_position_world(world_pos, heading=heading)
 
-            # Velocidad inicial
-            initial_speed_ms = self.agent_template['idm_desired_speed']
+            # Velocidad inicial (usa el nuevo desired_speed calculado)
+            initial_speed_ms = desired_speed_ms
             agent.set_velocity_world(Vector2(
                 initial_speed_ms * math.cos(heading),
                 initial_speed_ms * math.sin(heading),
