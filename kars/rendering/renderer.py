@@ -25,13 +25,15 @@ class Renderer:
 
     def __init__(self, width_px: int = config.WINDOW_WIDTH_PX,
                  height_px: int = config.WINDOW_HEIGHT_PX,
-                 scene_filepath: str = None):
+                 scene_filepath: str = None,
+                 camera_config: dict = None):
         """Inicializa renderer.
 
         Args:
             width_px: Ancho de ventana
             height_px: Alto de ventana
             scene_filepath: Ruta al archivo JSON de la escena (para resetear)
+            camera_config: Configuración de cámara {'viewport_x_min_m': ..., 'viewport_x_max_m': ...}
         """
         pygame.init()
 
@@ -62,6 +64,7 @@ class Renderer:
         self.initial_zoom_done = False
         self.scene_filepath = scene_filepath
         self.reset_requested = False
+        self.camera_config = camera_config or {}
 
     def _build_lanes_cache(self, snapshot: RenderSnapshot) -> pygame.Surface:
         """Construye una surface con todos los lanes dibujados.
@@ -703,32 +706,59 @@ class Renderer:
 
         # Configuración inicial: centra en todas las calles (solo una vez)
         if not self.initial_zoom_done and len(snapshot.lanes) > 0:
-            # Calcula bounding box de todas las calles
-            min_x, max_x = float('inf'), float('-inf')
-            min_y, max_y = float('inf'), float('-inf')
+            # Si hay configuración de viewport, úsala; si no, auto-fit
+            if 'viewport_x_min_m' in self.camera_config and 'viewport_x_max_m' in self.camera_config:
+                # Viewport configurado: muestra solo una porción del mundo
+                x_min = self.camera_config['viewport_x_min_m']
+                x_max = self.camera_config['viewport_x_max_m']
 
-            for lane_id, waypoints, width_m in snapshot.lanes:
-                for wx, wy in waypoints:
-                    min_x = min(min_x, wx)
-                    max_x = max(max_x, wx)
-                    min_y = min(min_y, wy - width_m/2)
-                    max_y = max(max_y, wy + width_m/2)
+                # Obtén altura máxima de los carriles para centrar verticalmente
+                min_y, max_y = float('inf'), float('-inf')
+                for lane_id, waypoints, width_m in snapshot.lanes:
+                    for wx, wy in waypoints:
+                        min_y = min(min_y, wy - width_m/2)
+                        max_y = max(max_y, wy + width_m/2)
 
-            lane_length_m = max_x - min_x
-            lane_height_m = max_y - min_y
+                viewport_width_m = x_max - x_min
+                viewport_height_m = max_y - min_y if max_y != float('-inf') else 10.0
 
-            # Calcula zoom para que todo quepa en pantalla
-            # Usa dimensión más restrictiva (la que más espacio ocupa en píxeles)
-            scale_px_per_m = config.SCALE_PX_PER_M
-            zoom_x = self.width_px / (lane_length_m * scale_px_per_m)
-            zoom_y = self.height_px / (lane_height_m * scale_px_per_m)
-            required_zoom = min(zoom_x, zoom_y)
-            self.viewport.camera.set_zoom(required_zoom)
+                # Calcula zoom para que el viewport quepa bien en pantalla
+                scale_px_per_m = config.SCALE_PX_PER_M
+                zoom_x = self.width_px / (viewport_width_m * scale_px_per_m)
+                zoom_y = self.height_px / (viewport_height_m * scale_px_per_m)
+                required_zoom = min(zoom_x, zoom_y)
+                self.viewport.camera.set_zoom(required_zoom)
 
-            # Centra en el medio del bounding box
-            center_x = (min_x + max_x) / 2.0
-            center_y = (min_y + max_y) / 2.0
-            self.viewport.camera.center_on(Vector2(center_x, center_y))
+                # Centra en el viewport configurado
+                center_x = (x_min + x_max) / 2.0
+                center_y = (min_y + max_y) / 2.0 if max_y != float('-inf') else 0.0
+                self.viewport.camera.center_on(Vector2(center_x, center_y))
+            else:
+                # Auto-fit: calcula bounding box de todas las calles
+                min_x, max_x = float('inf'), float('-inf')
+                min_y, max_y = float('inf'), float('-inf')
+
+                for lane_id, waypoints, width_m in snapshot.lanes:
+                    for wx, wy in waypoints:
+                        min_x = min(min_x, wx)
+                        max_x = max(max_x, wx)
+                        min_y = min(min_y, wy - width_m/2)
+                        max_y = max(max_y, wy + width_m/2)
+
+                lane_length_m = max_x - min_x
+                lane_height_m = max_y - min_y
+
+                # Calcula zoom para que todo quepa en pantalla
+                scale_px_per_m = config.SCALE_PX_PER_M
+                zoom_x = self.width_px / (lane_length_m * scale_px_per_m)
+                zoom_y = self.height_px / (lane_height_m * scale_px_per_m)
+                required_zoom = min(zoom_x, zoom_y)
+                self.viewport.camera.set_zoom(required_zoom)
+
+                # Centra en el medio del bounding box
+                center_x = (min_x + max_x) / 2.0
+                center_y = (min_y + max_y) / 2.0
+                self.viewport.camera.center_on(Vector2(center_x, center_y))
 
             self.initial_zoom_done = True
 

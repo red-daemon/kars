@@ -20,6 +20,7 @@ class SceneSetup:
     initial_agents: List[CarAgent]
     world_config: dict  # {'allow_spawning': False, ...}
     on_tick: Callable[[World, int], None] = None  # Callback cada tick
+    camera_config: dict = None  # {'viewport_x_min_m': ..., 'viewport_x_max_m': ...}
 
 
 def create_single_car_acceleration_scene() -> SceneSetup:

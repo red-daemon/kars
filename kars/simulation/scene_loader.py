@@ -321,6 +321,13 @@ class SceneLoader:
         # Configuración de world
         world_config = config.get('world', {})
 
+        # Establece número deseado de agentes (default = número inicial)
+        if 'desired_num_agents' not in world_config:
+            world_config['desired_num_agents'] = len(agents)
+
+        # Configuración de cámara
+        camera_config = config.get('camera', {})
+
         # Detecta tipo de escena y aplica callback apropiado
         if "stop sign" in name.lower():
             on_tick_callback = SceneLoader._create_stop_sign_callback()
@@ -344,6 +351,7 @@ class SceneLoader:
             initial_agents=agents,
             world_config=world_config,
             on_tick=on_tick_callback,
+            camera_config=camera_config,
         )
 
     @staticmethod

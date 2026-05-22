@@ -62,7 +62,7 @@ def main(scene_name: str = "test_single_car_acceleration"):
     print("  Q/Esc: Salir")
 
     print("\n[Renderizado] Iniciando Pygame...")
-    renderer = Renderer(scene_filepath=str(scenario_file))
+    renderer = Renderer(scene_filepath=str(scenario_file), camera_config=scene.camera_config)
 
     print("\n[Running] Simulación en vivo...")
     print("  Tecla R: Resetear escenario")
@@ -81,6 +81,7 @@ def main(scene_name: str = "test_single_car_acceleration"):
                         # Recarga la escena
                         scene = SceneLoader.load_scene(str(scenario_file))
                         world = World(scene.network, on_tick_callback=scene.on_tick, **scene.world_config)
+                        renderer.camera_config = scene.camera_config
 
                         for agent in scene.initial_agents:
                             world.add_agent(agent)

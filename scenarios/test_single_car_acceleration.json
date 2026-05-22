@@ -5,8 +5,8 @@
     "lanes": [
       {
         "id": "lane_0",
-        "start": [0, 0],
-        "end": [1000, 0],
+        "start": [-20, 0],
+        "end": [220, 0],
         "width_m": 2.7,
         "speed_limit_kmh": 40.0,
         "zone": "urban"
@@ -27,5 +27,9 @@
   ],
   "world": {
     "allow_spawning": false
+  },
+  "camera": {
+    "viewport_x_min_m": 0.0,
+    "viewport_x_max_m": 200.0
   }
 }

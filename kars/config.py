@@ -85,6 +85,12 @@ INITIAL_NUM_AGENTS = 20
 AGENT_SPAWN_MARGIN_M = 50.0
 
 # ============================================================================
+# SISTEMA DE RESPAWN: Mantenimiento de población de carros
+# ============================================================================
+RESPAWN_WAIT_MIN_S = 3.0                 # Tiempo mínimo entre spawns de deficit
+RESPAWN_WAIT_MAX_S = 7.0                 # Tiempo máximo entre spawns de deficit
+
+# ============================================================================
 # SISTEMA DE TRÁFICO: Generación de vehículos por zona
 # ============================================================================
 ZONE_TRAFFIC = {
