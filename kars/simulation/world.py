@@ -51,19 +51,27 @@ class World:
     - Produce snapshots para render
     """
 
-    def __init__(self, network: RoadNetwork, allow_spawning: bool = False, on_tick_callback=None):
+    def __init__(self, network: RoadNetwork, allow_spawning: bool = False, on_tick_callback=None, desired_num_agents: int = None):
         """Inicializa World.
 
         Args:
             network: RoadNetwork con la topologia de calles
             allow_spawning: Si True, auto-spawn de vehículos. Si False, solo manual via mouse.
             on_tick_callback: Callback(world, tick_number) para eventos customizados cada tick.
+            desired_num_agents: Número deseado de agentes para mantenimiento automático. Si None, no mantiene.
         """
         self.network = network
         self.agents: Dict[int, CarAgent] = {}
         self._agent_id_counter = config.AGENT_ID_COUNTER_START
         self.allow_spawning = allow_spawning
         self.on_tick_callback = on_tick_callback
+
+        # Mantenimiento de población
+        self.desired_num_agents = desired_num_agents
+        self.spawn_wait_time_remaining_s = 0.0
+        self.spawn_wait_initialized = False
+        # Parámetros de template para nuevos agentes
+        self.agent_template = None  # Se llena después de agregar agentes iniciales
 
         # Estado temporalizado
         self.tick_number = 0
@@ -105,6 +113,91 @@ class World:
             agent: CarAgent a agregar
         """
         self.agents[agent.agent_id] = agent
+
+        # Si es el primer agente y no hay template, usarlo como template
+        if self.agent_template is None and len(self.agents) == 1:
+            self._set_agent_template(agent)
+
+    def _set_agent_template(self, agent: CarAgent) -> None:
+        """Guarda parámetros de un agente como template para futuros spawns.
+
+        Args:
+            agent: Agente de referencia
+        """
+        self.agent_template = {
+            'lane_id': agent.current_lane_id,
+            'speed_multiplier': agent.speed_multiplier,
+            'idm_desired_speed': agent.idm_behavior.desired_speed,
+            'idm_time_headway': agent.idm_behavior.time_headway,
+            'idm_max_accel': agent.idm_behavior.max_accel,
+            'critical_gap_m': agent.critical_gap_m,
+            'stop_sign_wait_mean_s': agent.stop_sign_wait_mean_s,
+            'stop_sign_wait_stddev_s': agent.stop_sign_wait_stddev_s,
+            'stop_sign_buffer_m': agent.stop_sign_buffer_m,
+        }
+
+    def _spawn_agent_from_template(self) -> int:
+        """Crea un nuevo agente con parámetros del template.
+
+        Returns:
+            ID del agente creado, o -1 si falló
+        """
+        if self.agent_template is None:
+            return -1
+
+        try:
+            lane = self.network.get_lane(self.agent_template['lane_id'])
+
+            # Crea agente al inicio
+            agent = CarAgent(
+                agent_id=self.get_next_agent_id(),
+                current_lane_id=self.agent_template['lane_id'],
+                position_along_lane_s=0.1,
+                lateral_offset=0.0,
+            )
+
+            # Asigna parámetros del template
+            object.__setattr__(agent, 'speed_multiplier', self.agent_template['speed_multiplier'])
+            object.__setattr__(agent, 'critical_gap_m', self.agent_template['critical_gap_m'])
+            object.__setattr__(agent, 'stop_sign_wait_mean_s', self.agent_template['stop_sign_wait_mean_s'])
+            object.__setattr__(agent, 'stop_sign_wait_stddev_s', self.agent_template['stop_sign_wait_stddev_s'])
+            object.__setattr__(agent, 'stop_sign_buffer_m', self.agent_template['stop_sign_buffer_m'])
+
+            # Configura IDM
+            object.__setattr__(
+                agent.idm_behavior,
+                'desired_speed',
+                self.agent_template['idm_desired_speed']
+            )
+            object.__setattr__(
+                agent.idm_behavior,
+                'time_headway',
+                self.agent_template['idm_time_headway']
+            )
+            object.__setattr__(
+                agent.idm_behavior,
+                'max_accel',
+                self.agent_template['idm_max_accel']
+            )
+
+            # Posiciona en mundo
+            world_pos = lane.world_position_at(0.1, 0.0)
+            heading = lane.heading_at(0.1)
+            agent.set_position_world(world_pos, heading=heading)
+
+            # Velocidad inicial
+            initial_speed_ms = self.agent_template['idm_desired_speed']
+            agent.set_velocity_world(Vector2(
+                initial_speed_ms * math.cos(heading),
+                initial_speed_ms * math.sin(heading),
+            ))
+
+            self.add_agent(agent)
+            return agent.agent_id
+
+        except Exception as e:
+            print(f"Error spawning agent from template: {e}")
+            return -1
 
     def remove_agent(self, agent_id: int) -> bool:
         """Elimina un agente de la simulacion.
@@ -293,6 +386,30 @@ class World:
         if self.on_tick_callback:
             self.on_tick_callback(self, self.tick_number)
 
+        # Mantenimiento de población de agentes
+        if self.desired_num_agents is not None:
+            current_num = len(self.agents)
+            deficit = self.desired_num_agents - current_num
+
+            if deficit > 0:
+                # Hay deficit, inicializar spawn si no está en progreso
+                if not self.spawn_wait_initialized:
+                    wait_time = random.uniform(config.RESPAWN_WAIT_MIN_S, config.RESPAWN_WAIT_MAX_S)
+                    self.spawn_wait_time_remaining_s = wait_time
+                    self.spawn_wait_initialized = True
+
+                # Contar hacia atrás
+                if self.spawn_wait_initialized:
+                    self.spawn_wait_time_remaining_s -= config.TICK_DT_S * self.sim_speed_factor
+                    if self.spawn_wait_time_remaining_s <= 0:
+                        # Crear agente
+                        self._spawn_agent_from_template()
+                        # Resetear para próximo spawn
+                        self.spawn_wait_initialized = False
+            else:
+                # No hay deficit, resetear estado
+                self.spawn_wait_initialized = False
+
         # Generador de tráfico probabilístico - solo si allow_spawning está habilitado
         if self.allow_spawning:
             for lane in self.network.get_all_lanes():
@@ -347,8 +464,17 @@ class World:
                 new_s = lane.find_closest_s(agent.kinematic_state.position)
                 new_offset = lane.get_lateral_offset_at(agent.kinematic_state.position, new_s)
 
-                # Comprueba fin de carril
-                if new_s >= lane.length_m():
+                # Comprueba fin de carril: elimina cuando el carro sale completamente de pantalla
+                # Usa coordenadas mundo (x) para detectar agentes que han salido completamente
+                # en lugar de new_s que está acotado por lane.find_closest_s()
+                agent_x = agent.kinematic_state.position.x
+                lane_end_x = lane.waypoints[-1].position.x
+
+                # Buffer pequeño para estar seguro (equivalente a un car length)
+                removal_buffer_m = config.CAR_LENGTH_M
+
+                # Elimina cuando el agente ha pasado completamente el final del carril
+                if agent_x > lane_end_x + removal_buffer_m:
                     agents_to_remove.append(agent.agent_id)
                     continue
 
