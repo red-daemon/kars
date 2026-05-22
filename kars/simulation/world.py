@@ -448,10 +448,8 @@ class World:
                 if agent.disable_ticks_remaining == 0:
                     self.remove_agent(agent.agent_id)
 
-        # Decrementa contador de espera en señal de alto
-        for agent in list(self.agents.values()):
-            if agent.stop_sign_wait_time_remaining_s > 0:
-                agent.stop_sign_wait_time_remaining_s -= config.TICK_DT_S * self.sim_speed_factor
+        # Nota: Decremento de timer de stop sign ahora ocurre en DECISION phase (car_agent.py)
+        # para asegurar que el carro esté completamente detenido antes de iniciar el timer
 
     def _phase_spatial_index(self) -> None:
         """FASE 5: Sincroniza posiciones, detecta colisiones, limpia fin de carril."""

@@ -184,16 +184,21 @@ class CarAgent:
                     # Dejar que IDM normal continúe
                 # Si aún está esperando o debe frenar para llegar
                 elif stop_sign_distance < BRAKING_DISTANCE_M:
-                    # Si está detenido (v < 1 m/s) e inicializa espera
-                    if current_speed < 1.0 and not self._stop_sign_wait_initialized:
+                    # Decrementa timer si está esperando (ocurre aquí en DECISION, no en ENVIRONMENT)
+                    if self._stop_sign_wait_initialized and self.stop_sign_wait_time_remaining_s > 0:
+                        object.__setattr__(self, 'stop_sign_wait_time_remaining_s',
+                                         self.stop_sign_wait_time_remaining_s - config.TICK_DT_S)
+
+                    # Si está casi detenido (v < 0.05 m/s) e inicializa espera
+                    if current_speed < 0.05 and not self._stop_sign_wait_initialized:
                         # Sortea tiempo aleatorio
                         wait_time = random.gauss(self.stop_sign_wait_mean_s, self.stop_sign_wait_stddev_s)
                         wait_time = max(0.0, wait_time)  # No puede ser negativo
                         object.__setattr__(self, 'stop_sign_wait_time_remaining_s', wait_time)
                         object.__setattr__(self, '_stop_sign_wait_initialized', True)
 
-                    # Si está esperando, mantén velocidad = 0
-                    if self.stop_sign_wait_time_remaining_s > 0:
+                    # Si está esperando o debe frenar hasta detenerse completamente, mantén velocidad = 0
+                    if self.stop_sign_wait_time_remaining_s > 0 or (self._stop_sign_wait_initialized and current_speed > 0):
                         return 0.0
 
                     # Si debe frenar para llegar a la señal
