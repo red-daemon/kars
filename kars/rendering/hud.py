@@ -126,11 +126,10 @@ class HUD:
         # Actualizar gráfica
         self.speed_chart.update(snapshot.avg_speed_kmh)
 
-        # Actualizar labels de estadísticas
+        # Actualizar labels de estadísticas (sin FPS aquí, se pasa en draw())
         self.label_tick.set_text(f"Tick: {snapshot.tick_number}")
         self.label_time.set_text(f"Time: {snapshot.sim_time_s:.2f}s")
         self.label_agents.set_text(f"Agents: {len(world.agents)}")
-        self.label_fps.set_text(f"FPS: {snapshot.fps:.1f}")
         self.label_speed.set_text(f"Avg Speed: {snapshot.avg_speed_kmh:.2f} km/h")
 
         # Obtener varianza si está disponible
@@ -138,12 +137,16 @@ class HUD:
         if stats:
             self.label_variance.set_text(f"Variance: {stats.avg_speed_variance:.4f}")
 
-    def draw(self, surface: pygame.Surface) -> None:
+    def draw(self, surface: pygame.Surface, fps: float = 0.0) -> None:
         """Dibuja todo el HUD.
 
         Args:
             surface: pygame.Surface donde dibujar
+            fps: Fotogramas por segundo actual del renderer
         """
+        # Actualizar FPS label con valor actual
+        self.label_fps.set_text(f"FPS: {fps:.1f}")
+
         # Fondo semi-transparente para HUD (top section)
         hud_top_rect = pygame.Rect(0, 0, self.window_width, 120)
         pygame.draw.rect(surface, config.COLOR_HUD_BG, hud_top_rect)

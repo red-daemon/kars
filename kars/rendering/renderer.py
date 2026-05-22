@@ -55,6 +55,7 @@ class Renderer:
         # FPS tracking
         self.frame_times = []
         self.last_frame_time = time.time()
+        self.current_fps = 0.0
 
         # Cache de lanes (se dibuja una sola vez)
         self.lanes_cache_surface: Optional[pygame.Surface] = None
@@ -658,7 +659,7 @@ class Renderer:
 
         return True
 
-    def update_fps(self, snapshot: RenderSnapshot) -> None:
+    def update_fps(self) -> None:
         """Actualiza cálculo de FPS."""
         now = time.time()
         dt = now - self.last_frame_time
@@ -670,8 +671,7 @@ class Renderer:
 
         if self.frame_times:
             avg_frame_time = sum(self.frame_times) / len(self.frame_times)
-            fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
-            snapshot.fps = fps
+            self.current_fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
 
     def run_frame(self, world: World) -> bool:
         """Ejecuta un frame del simulador.
@@ -802,10 +802,10 @@ class Renderer:
         self.draw_stopping_line(snapshot)
 
         # Actualiza FPS
-        self.update_fps(snapshot)
+        self.update_fps()
 
-        # Dibuja HUD overlay
-        self.hud.draw(self.screen)
+        # Dibuja HUD overlay (pasa FPS actual)
+        self.hud.draw(self.screen, fps=self.current_fps)
 
         # Actualiza pantalla
         pygame.display.flip()

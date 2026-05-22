@@ -17,20 +17,34 @@ class SpeedChart:
 
         Args:
             rect: pygame.Rect define posición (x,y) y tamaño (w,h) en pantalla
-            max_speed_kmh: Escala máxima del eje Y
+            max_speed_kmh: Escala inicial del eje Y (escala dinámicamente según datos)
         """
         self.rect = rect
+        self.initial_max_speed = max_speed_kmh
         self.max_speed_kmh = max_speed_kmh
         self.history = deque(maxlen=60)  # últimos 60 valores
         self.font_small = pygame.font.Font(None, 14)
 
     def update(self, avg_speed_kmh: float) -> None:
-        """Agrega nuevo valor a la historia.
+        """Agrega nuevo valor a la historia y escala dinámicamente.
 
         Args:
             avg_speed_kmh: Velocidad promedio del último tick
         """
-        self.history.append(max(0.0, min(self.max_speed_kmh, avg_speed_kmh)))
+        speed = max(0.0, avg_speed_kmh)
+        self.history.append(speed)
+
+        # Escala dinámica: si la velocidad supera el máximo actual, aumenta la escala
+        if speed > self.max_speed_kmh:
+            # Redondea hacia arriba al múltiplo de 5 km/h más cercano
+            self.max_speed_kmh = ((speed // 5) + 1) * 5
+        # Si no hay datos cercanos al máximo, reduce la escala
+        elif len(self.history) > 30:
+            max_in_history = max(self.history)
+            min_scale = self.initial_max_speed
+            # Solo reduce si todos los valores están muy por debajo
+            if max_in_history < self.max_speed_kmh / 2 and self.max_speed_kmh > min_scale:
+                self.max_speed_kmh = max(min_scale, ((max_in_history * 1.2) // 5 + 1) * 5)
 
     def draw(self, surface: pygame.Surface) -> None:
         """Dibuja el chart en la superficie.
