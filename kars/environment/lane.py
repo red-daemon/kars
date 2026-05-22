@@ -26,12 +26,17 @@ class Lane:
     Posición de agente: (current_lane_id, position_along_lane_s, lateral_offset)
     - position_along_lane_s: distancia a lo largo del carril desde inicio
     - lateral_offset: desplazamiento perpendicular (0 = centro)
+
+    Multi-lane: lane_index define posición perpendicular en relación a otros carriles
+    - lane_index 0, 1, 2... se distribuyen perpendicular a la dirección del carril
     """
 
     lane_id: str
     waypoints: List[Waypoint]
     width_m: float = None
     speed_limit_kmh: float = None
+    lane_index: int = 0  # 0, 1, 2... Índice secuencial en dirección perpendicular
+    lane_type: str = "normal"  # "normal", "ramp_in", "ramp_out" (para futuro)
     direction: str = "forward"  # "forward" o "backward"
     zone: str = "urban"  # Tipo de zona para parámetros de tráfico
     stop_signs: List[StopSign] = field(default_factory=list)  # Señales de alto en este carril
@@ -39,9 +44,10 @@ class Lane:
     # Campos computados
     _cumulative_distances: List[float] = field(default_factory=list, init=False, repr=False)
     _total_length_m: float = field(default=0.0, init=False, repr=False)
+    _perpendicular_direction: Vector2 = field(default_factory=lambda: Vector2(0, 0), init=False, repr=False)  # Dirección perpendicular al carril
 
     def __post_init__(self):
-        """Precalcula distancias cumulativas para búsqueda O(log N)."""
+        """Precalcula distancias cumulativas y dirección perpendicular para multi-lane."""
         if len(self.waypoints) < 2:
             raise ValueError(f"Lane {self.lane_id}: necesita al menos 2 waypoints")
 
@@ -59,6 +65,15 @@ class Lane:
 
         object.__setattr__(self, '_cumulative_distances', cumulative)
         object.__setattr__(self, '_total_length_m', cumulative[-1])
+
+        # Calcula dirección perpendicular al carril (para multi-lane)
+        # Toma la dirección del primer segmento y la rota 90 grados
+        start = self.waypoints[0].position
+        end = self.waypoints[1].position
+        lane_direction = (end - start).normalize()
+        # Rotar 90 grados: (x, y) → (-y, x)
+        perpendicular = Vector2(-lane_direction.y, lane_direction.x)
+        object.__setattr__(self, '_perpendicular_direction', perpendicular)
 
     def length_m(self) -> float:
         """Longitud total del carril en metros."""
@@ -109,7 +124,7 @@ class Lane:
         # Encuentra el segmento
         for i in range(len(self._cumulative_distances) - 1):
             if s <= self._cumulative_distances[i + 1]:
-                # Rumbo del segmento: direcci贸n de waypoint[i] a waypoint[i+1]
+                # Rumbo del segmento: dirección de waypoint[i] a waypoint[i+1]
                 p0 = self.waypoints[i].position
                 p1 = self.waypoints[i + 1].position
 
@@ -123,11 +138,11 @@ class Lane:
     def normal_direction_at(self, s: float) -> Vector2:
         """Vector normal perpendicular al carril a distancia s.
 
-        Usado para calcular posici贸n lateral de agentes.
-        Returns: vector unitario perpendicular (rotaci贸n 90掳 contraria a heading)
+        Usado para calcular posición lateral de agentes.
+        Returns: vector unitario perpendicular (rotación 90° contraria a heading)
         """
         heading = self.heading_at(s)
-        # Normal perpendicular: rotaci贸n 90掳 en sentido contrario
+        # Normal perpendicular: rotación 90° en sentido contrario
         normal_heading = heading + math.pi / 2.0
         return Vector2(math.cos(normal_heading), math.sin(normal_heading))
 
@@ -144,19 +159,27 @@ class Lane:
         return max(-max_offset, min(offset, max_offset))
 
     def world_position_at(self, s: float, lateral_offset: float = 0.0) -> Vector2:
-        """Posici贸n mundo 2D de un agente en (s, lateral_offset).
+        """Posición mundo 2D de un agente en (s, lateral_offset).
+
+        En configuración multi-carril, posiciona el agente en el carril correspondiente
+        según lane_index, luego aplica lateral_offset dentro de ese carril.
 
         Args:
             s: Distancia a lo largo del carril
-            lateral_offset: Desplazamiento perpendicular al carril
+            lateral_offset: Desplazamiento perpendicular al carril (0 = centro del carril)
 
         Returns:
             Vector2 en coordenadas mundo
         """
-        # Posici贸n a lo largo del carril
+        # Posición a lo largo del carril centerline
         pos_along = self.position_at(s)
 
-        # Si hay offset lateral, a帽ade la componente perpendicular
+        # Multi-carril: desplaza por lane_index en dirección perpendicular
+        if self.lane_index != 0:
+            multi_lane_offset = self._perpendicular_direction * (self.lane_index * self.width_m)
+            pos_along = pos_along + multi_lane_offset
+
+        # Aplica offset lateral adicional dentro del carril (lateral_offset)
         if abs(lateral_offset) > 1e-9:
             normal = self.normal_direction_at(s)
             return pos_along + (normal * lateral_offset)

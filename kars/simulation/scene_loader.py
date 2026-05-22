@@ -50,6 +50,9 @@ class SceneLoader:
             width_m = lane_cfg.get('width_m', 2.7)
             speed_limit_kmh = lane_cfg.get('speed_limit_kmh', 50.0)
             zone = lane_cfg.get('zone', 'urban')
+            lane_index = lane_cfg.get('lane_index', 0)
+            lane_type = lane_cfg.get('lane_type', 'normal')
+            direction = lane_cfg.get('direction', 'forward')
 
             # Crea waypoints
             waypoints = [
@@ -64,6 +67,9 @@ class SceneLoader:
                 width_m=width_m,
                 speed_limit_kmh=speed_limit_kmh,
                 zone=zone,
+                lane_index=lane_index,
+                lane_type=lane_type,
+                direction=direction,
             )
 
             # Crea segment y lo agrega
