@@ -60,10 +60,24 @@ class CarAgent:
     # Conductores agresivos: 2m (casi chocan antes de frenar)
     critical_gap_m: float = 5.0
 
+    # Parámetros de comportamiento en señales de alto
+    # Media de tiempo de espera en segundos
+    stop_sign_wait_mean_s: float = 1.0
+    # Desviación estándar del tiempo de espera en segundos
+    stop_sign_wait_stddev_s: float = 0.3
+    # Buffer adicional de parada antes de la línea (metros)
+    # Se suma a 1m base: precavido 1.0m, normal 0.5m, agresivo 0.0m
+    stop_sign_buffer_m: float = 0.5
+
     # Estado de colisión
     is_disabled: bool = False          # True si está en estado de colisión
     disable_ticks_remaining: int = 0   # Countdown para remoción
     shoulder_offset: float = 0.0       # Offset actual hacia la orilla (m)
+
+    # Estado de espera en señal de alto
+    stop_sign_wait_time_remaining_s: float = 0.0  # Contador de espera
+    _stop_sign_wait_initialized: bool = False      # Si ya se sorteó el tiempo
+    processed_stop_signs: list = field(default_factory=list)  # IDs de señales ya procesadas
 
     # Debug: track de estado anterior para imprimir cambios
     _last_braking_mode: str = "none"   # "none", "cruise", "soft_brake", "hard_brake", "stopped"
@@ -136,11 +150,70 @@ class CarAgent:
         Returns:
             Aceleración deseada en m/s²
         """
+        import random
+
         current_speed = self.kinematic_state.speed_ms()
         current_braking_mode = "none"
 
         # Distancia umbral para comenzar frenado suave (metros)
-        BRAKING_DISTANCE_M = 30.0
+        # Calculada dinámicamente: distancia de frenado = v² / (2*a)
+        # Usa velocidad deseada y frenado cómodo
+        desired_speed = self.idm_behavior.desired_speed
+        comfortable_decel = self.idm_behavior.comfortable_decel
+        BRAKING_DISTANCE_M = max(30.0, (desired_speed ** 2) / (2.0 * comfortable_decel)) if comfortable_decel > 0 else 30.0
+
+        # Manejo de señales de alto
+        # Solo aplica si no hay carro más cerca adelante
+        if perception.nearby_stop_signs and perception.leader_distance_m > perception.nearby_stop_signs[0]['distance_m']:
+            nearest_stop_sign = perception.nearby_stop_signs[0]
+            stop_sign_distance = nearest_stop_sign['distance_m']
+            stop_sign_position_s = nearest_stop_sign['position_s']
+            stop_sign_id = nearest_stop_sign['stop_sign_id']
+
+            # Si no fue procesada aún, aplicar lógica
+            if stop_sign_id not in self.processed_stop_signs:
+                if tick_number % 50 == 0:
+                    print(f"[STOP SIGN DEBUG] Agent {self.agent_id}: distance={stop_sign_distance:.1f}m, "
+                          f"position_s={stop_sign_position_s:.1f}m, speed={current_speed:.2f}m/s, "
+                          f"wait_remaining={self.stop_sign_wait_time_remaining_s:.2f}s")
+
+                # Si terminó la espera, marcar como procesada
+                if self._stop_sign_wait_initialized and self.stop_sign_wait_time_remaining_s <= 0:
+                    object.__setattr__(self, '_stop_sign_wait_initialized', False)
+                    self.processed_stop_signs.append(stop_sign_id)
+                    # Dejar que IDM normal continúe
+                # Si aún está esperando o debe frenar para llegar
+                elif stop_sign_distance < BRAKING_DISTANCE_M:
+                    # Si está detenido (v < 1 m/s) e inicializa espera
+                    if current_speed < 1.0 and not self._stop_sign_wait_initialized:
+                        # Sortea tiempo aleatorio
+                        wait_time = random.gauss(self.stop_sign_wait_mean_s, self.stop_sign_wait_stddev_s)
+                        wait_time = max(0.0, wait_time)  # No puede ser negativo
+                        object.__setattr__(self, 'stop_sign_wait_time_remaining_s', wait_time)
+                        object.__setattr__(self, '_stop_sign_wait_initialized', True)
+
+                    # Si está esperando, mantén velocidad = 0
+                    if self.stop_sign_wait_time_remaining_s > 0:
+                        return 0.0
+
+                    # Si debe frenar para llegar a la señal
+                    if current_speed > 0:
+                        agent_front_s = self.position_along_lane_s + config.CAR_LENGTH_M / 2.0
+
+                        # Calcula posición efectiva de parada: 1m base + buffer del carro
+                        stop_buffer_base_m = 1.0
+                        effective_stop_position = stop_sign_position_s - stop_buffer_base_m - self.stop_sign_buffer_m
+                        gap_to_stop = effective_stop_position - agent_front_s
+
+                        if current_speed < 0.5:
+                            accel = -current_speed / config.TICK_DT_S if current_speed > 0 else 0.0
+                        elif gap_to_stop > 2.0:
+                            accel = -current_speed * current_speed / (2.0 * gap_to_stop)
+                            accel = max(accel, -self.idm_behavior.comfortable_decel)
+                        else:
+                            accel = -self.idm_behavior.comfortable_decel
+
+                        return accel
 
         # Obstáculo parado cerca: usar frenado cinemático
         if perception.leader_speed_ms == 0.0 and perception.leader_distance_m < BRAKING_DISTANCE_M:
@@ -237,6 +310,11 @@ class CarAgent:
             comfortable_decel_ms2=self.idm_behavior.comfortable_decel,
             delta=self.idm_behavior.delta,
         )
+
+        # Resetea estado de stop sign si se aleja
+        if not perception.nearby_stop_signs and self._stop_sign_wait_initialized:
+            object.__setattr__(self, '_stop_sign_wait_initialized', False)
+            object.__setattr__(self, 'stop_sign_wait_time_remaining_s', 0.0)
 
         # Calcula aceleración usando IDM
         desired_accel = idm_with_tolerance.compute_acceleration(

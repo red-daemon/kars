@@ -1,0 +1,34 @@
+{
+  "name": "Stop Sign Test",
+  "description": "Carro viaja a 60 km/h. A 3/4 de la calle, señal de alto. Se detiene, espera un tiempo aleatorio, y continúa.",
+  "road": {
+    "lanes": [
+      {
+        "id": "lane_0",
+        "start": [0, 0],
+        "end": [200, 0],
+        "width_m": 2.7,
+        "speed_limit_kmh": 60.0,
+        "zone": "urban"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": 1001,
+      "lane": "lane_0",
+      "position_s": 5.0,
+      "initial_velocity_ms": 16.67,
+      "speed_multiplier_mean": 1.0,
+      "speed_multiplier_stddev": 0.05,
+      "time_headway_s": 1.5,
+      "max_accel_ms2": 2.0,
+      "critical_gap_m": 5.0,
+      "stop_sign_wait_mean_s": 1.0,
+      "stop_sign_wait_stddev_s": 0.3
+    }
+  ],
+  "world": {
+    "allow_spawning": false
+  }
+}

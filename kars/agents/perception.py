@@ -31,12 +31,19 @@ class PerceptionData:
     # ID del carril actual
     current_lane_id: str
 
+    # Lista de señales de alto próximas: [{distance_m, position_s}]
+    # Vacía si no hay señales visibles
+    nearby_stop_signs: list = None
+
     def __post_init__(self):
         """Valida que distancias sean positivas."""
         if self.leader_distance_m < 0:
             raise ValueError("leader_distance_m no puede ser negativo")
         if self.follower_distance_m < 0:
             raise ValueError("follower_distance_m no puede ser negativo")
+        # Inicializa lista vacía si no se proporciona
+        if self.nearby_stop_signs is None:
+            object.__setattr__(self, 'nearby_stop_signs', [])
 
 
 class PerceptionModule:
@@ -130,6 +137,24 @@ class PerceptionModule:
                     follower_distance = -gap
                     follower_speed = other_speed
 
+        # Detecta señales de alto próximas
+        nearby_stop_signs = []
+        if hasattr(lane, 'stop_signs') and lane.stop_signs:
+            for stop_sign in lane.stop_signs:
+                if not stop_sign.is_active:
+                    continue
+                # Distancia desde la parte delantera del carro a la señal
+                distance_to_sign = stop_sign.position_s - agent_front_s
+                # Solo considera señales adelante dentro del horizonte
+                if 0 < distance_to_sign <= PerceptionModule.PERCEPTION_HORIZON:
+                    nearby_stop_signs.append({
+                        'distance_m': distance_to_sign,
+                        'position_s': stop_sign.position_s,
+                        'stop_sign_id': stop_sign.stop_sign_id
+                    })
+            # Ordena por distancia (más cercana primero)
+            nearby_stop_signs.sort(key=lambda s: s['distance_m'])
+
         return PerceptionData(
             leader_distance_m=leader_distance,
             leader_speed_ms=leader_speed,
@@ -137,4 +162,5 @@ class PerceptionModule:
             follower_speed_ms=follower_speed,
             speed_limit_kmh=lane.speed_limit_kmh,
             current_lane_id=agent_lane_id,
+            nearby_stop_signs=nearby_stop_signs,
         )

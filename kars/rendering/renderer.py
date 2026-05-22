@@ -368,6 +368,82 @@ class Renderer:
             text_rect = text.get_rect(center=(int(sign_screen[0]), int(sign_screen[1]) + offset_y))
             self.screen.blit(text, text_rect)
 
+    def draw_stop_signs(self, snapshot: RenderSnapshot) -> None:
+        """Dibuja señales de alto en cada carril.
+
+        Octágono rojo + franja blanca de parada.
+
+        Args:
+            snapshot: RenderSnapshot con información de lanes
+        """
+        if not snapshot.lanes:
+            return
+
+        for lane_id, waypoints, width_m in snapshot.lanes:
+            if len(waypoints) < 2:
+                continue
+
+            try:
+                lane = self.world.network.get_lane(lane_id)
+                if not hasattr(lane, 'stop_signs') or not lane.stop_signs:
+                    continue
+
+                for stop_sign in lane.stop_signs:
+                    if not stop_sign.is_active:
+                        continue
+
+                    # Posición de la señal en el mundo
+                    stop_world_pos = Vector2(waypoints[0][0] + stop_sign.position_s, waypoints[0][1])
+                    stop_screen = self.viewport.world_to_screen(stop_world_pos)
+
+                    # Franja blanca en el suelo (mismo grosor que las franjas de carril)
+                    # Dibuja línea blanca perpendicular al carril
+                    half_width = config.LANE_WIDTH_M / 2.0
+
+                    # Calcula normal (perpendicular al carril en ese punto)
+                    # Usa dirección entre primer y último waypoint
+                    lane_start = Vector2(waypoints[0][0], waypoints[0][1])
+                    lane_end = Vector2(waypoints[-1][0], waypoints[-1][1])
+                    lane_dir = (lane_end - lane_start).normalize()
+                    lane_normal = Vector2(-lane_dir.y, lane_dir.x)
+
+                    left_pos = stop_world_pos + lane_normal * half_width
+                    right_pos = stop_world_pos - lane_normal * half_width
+
+                    left_screen = self.viewport.world_to_screen(left_pos)
+                    right_screen = self.viewport.world_to_screen(right_pos)
+
+                    pygame.draw.line(self.screen, (255, 255, 255),
+                                   (int(left_screen[0]), int(left_screen[1])),
+                                   (int(right_screen[0]), int(right_screen[1])), 3)
+
+                    # Octágono rojo (señal de alto) encima de la calle
+                    offset_y = -35
+                    sign_size = 20
+                    sign_radius = sign_size // 2
+
+                    # Crea puntos del octágono (8 puntos)
+                    import math
+                    octagon_points = []
+                    for i in range(8):
+                        angle = i * math.pi / 4  # 45 grados entre puntos
+                        x = int(stop_screen[0]) + int(sign_radius * math.cos(angle))
+                        y = int(stop_screen[1]) + offset_y + int(sign_radius * math.sin(angle))
+                        octagon_points.append((x, y))
+
+                    # Dibuja octágono rojo
+                    pygame.draw.polygon(self.screen, (200, 0, 0), octagon_points)  # Rojo oscuro
+                    pygame.draw.polygon(self.screen, (255, 0, 0), octagon_points, 2)  # Borde rojo brillante
+
+                    # Dibuja "STOP" en blanco
+                    font = pygame.font.Font(None, 14)
+                    text = font.render("STOP", True, (255, 255, 255))
+                    text_rect = text.get_rect(center=(int(stop_screen[0]), int(stop_screen[1]) + offset_y))
+                    self.screen.blit(text, text_rect)
+
+            except Exception:
+                continue
+
     def draw_lane_cached(self, snapshot: RenderSnapshot) -> None:
         """Dibuja lanes usando cache estático.
 
@@ -685,6 +761,9 @@ class Renderer:
 
         # Dibuja indicador de límite de velocidad
         self.draw_speed_limit_sign(snapshot)
+
+        # Dibuja señales de alto
+        self.draw_stop_signs(snapshot)
 
         # Dibuja obstáculos permanentes
         self.draw_obstacles(snapshot)

@@ -8,6 +8,18 @@ import kars.config as config
 
 
 @dataclass
+class StopSign:
+    """Señal de alto en un carril.
+
+    Representa una línea de parada donde los vehículos deben detenerse.
+    """
+
+    position_s: float  # Distancia a lo largo del carril (metros)
+    is_active: bool = True  # Si está en efecto
+    stop_sign_id: int = field(default_factory=lambda: id(object()))  # ID único de la señal
+
+
+@dataclass
 class Lane:
     """Un carril individual representado como polilínea.
 
@@ -22,6 +34,7 @@ class Lane:
     speed_limit_kmh: float = None
     direction: str = "forward"  # "forward" o "backward"
     zone: str = "urban"  # Tipo de zona para parámetros de tráfico
+    stop_signs: List[StopSign] = field(default_factory=list)  # Señales de alto en este carril
 
     # Campos computados
     _cumulative_distances: List[float] = field(default_factory=list, init=False, repr=False)

@@ -103,6 +103,9 @@ class SceneLoader:
             time_headway_s = agent_cfg.get('time_headway_s', 1.5)
             max_accel_ms2 = agent_cfg.get('max_accel_ms2', 2.0)
             critical_gap_m = agent_cfg.get('critical_gap_m', 5.0)
+            stop_sign_wait_mean_s = agent_cfg.get('stop_sign_wait_mean_s', 1.0)
+            stop_sign_wait_stddev_s = agent_cfg.get('stop_sign_wait_stddev_s', 0.3)
+            stop_sign_buffer_m = agent_cfg.get('stop_sign_buffer_m', 0.5)
 
             # Muestrea multiplicador de velocidad desde distribución Normal
             speed_mult_mean = agent_cfg.get('speed_multiplier_mean', 1.0)
@@ -128,6 +131,11 @@ class SceneLoader:
 
             # Establece gap crítico (parámetro de comportamiento)
             object.__setattr__(agent, 'critical_gap_m', critical_gap_m)
+
+            # Establece parámetros de stop sign
+            object.__setattr__(agent, 'stop_sign_wait_mean_s', stop_sign_wait_mean_s)
+            object.__setattr__(agent, 'stop_sign_wait_stddev_s', stop_sign_wait_stddev_s)
+            object.__setattr__(agent, 'stop_sign_buffer_m', stop_sign_buffer_m)
 
             # Calcula y configura velocidad deseada basada en límite de calle
             desired_speed_ms = (lane_speed_limit_kmh * speed_multiplier) / 3.6
@@ -202,6 +210,39 @@ class SceneLoader:
                     pass
 
         return on_tick_multi_lane
+
+    @staticmethod
+    def _create_stop_sign_callback():
+        """Callback para escena de señal de alto.
+
+        - Agrega una señal de alto a 3/4 de la calle
+        """
+        from kars.environment.lane import StopSign
+
+        stop_sign_added = [False]
+
+        def on_tick_stop_sign(world, tick_number):
+            if tick_number == 0 and not stop_sign_added[0]:
+                try:
+                    lane = world.network.get_lane("lane_0")
+                    # Posición: 3/4 de la longitud del carril
+                    stop_sign_position_s = lane.length_m() * 0.75
+                    stop_sign = StopSign(position_s=stop_sign_position_s, is_active=True)
+                    lane.stop_signs.append(stop_sign)
+                    stop_sign_added[0] = True
+                    print(f"[SCENE] Stop sign added at s={stop_sign_position_s:.1f}m (lane length={lane.length_m():.1f}m)")
+                except Exception as e:
+                    print(f"Error adding stop sign: {e}")
+
+            # Debug: print status cada 50 ticks
+            if tick_number % 50 == 0:
+                for agent in world.agents.values():
+                    if agent.agent_id == 1001:
+                        print(f"[TICK {tick_number}] Agent {agent.agent_id}: s={agent.position_along_lane_s:.1f}m, "
+                              f"v={agent.kinematic_state.speed_ms():.2f}m/s, "
+                              f"wait_remaining={agent.stop_sign_wait_time_remaining_s:.2f}s")
+
+        return on_tick_stop_sign
 
     @staticmethod
     def _create_collision_chain_callback():
@@ -281,7 +322,9 @@ class SceneLoader:
         world_config = config.get('world', {})
 
         # Detecta tipo de escena y aplica callback apropiado
-        if "collision chain" in name.lower():
+        if "stop sign" in name.lower():
+            on_tick_callback = SceneLoader._create_stop_sign_callback()
+        elif "collision chain" in name.lower():
             on_tick_callback = SceneLoader._create_collision_chain_callback()
         elif "multi" in name.lower() or "lane" in name.lower():
             on_tick_callback = SceneLoader._create_multi_lane_callback()
