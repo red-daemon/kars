@@ -496,7 +496,9 @@ class SceneLoader:
         # Calcula bounding box de la red automáticamente si no se especifica viewport
         has_explicit_viewport = (
             'viewport_x_min' in camera_config_raw or
+            'viewport_x_min_m' in camera_config_raw or
             'viewport_x_max' in camera_config_raw or
+            'viewport_x_max_m' in camera_config_raw or
             'visible_length_m' in camera_config_raw
         )
 
@@ -516,12 +518,26 @@ class SceneLoader:
             # Formato antiguo: viewport_x_min/max (compatibilidad)
             if 'viewport_x_min' in camera_config_raw:
                 camera_config['viewport_x_min_m'] = camera_config_raw['viewport_x_min']
+            if 'viewport_x_min_m' in camera_config_raw:
+                camera_config['viewport_x_min_m'] = camera_config_raw['viewport_x_min_m']
             if 'viewport_x_max' in camera_config_raw:
                 camera_config['viewport_x_max_m'] = camera_config_raw['viewport_x_max']
+            if 'viewport_x_max_m' in camera_config_raw:
+                camera_config['viewport_x_max_m'] = camera_config_raw['viewport_x_max_m']
             if 'viewport_y_min' in camera_config_raw:
                 camera_config['viewport_y_min_m'] = camera_config_raw['viewport_y_min']
+            if 'viewport_y_min_m' in camera_config_raw:
+                camera_config['viewport_y_min_m'] = camera_config_raw['viewport_y_min_m']
             if 'viewport_y_max' in camera_config_raw:
                 camera_config['viewport_y_max_m'] = camera_config_raw['viewport_y_max']
+            if 'viewport_y_max_m' in camera_config_raw:
+                camera_config['viewport_y_max_m'] = camera_config_raw['viewport_y_max_m']
+
+        # Si se especifica viewport_x_max explícitamente, úsalo como límite de remover
+        if 'viewport_x_max_m' in camera_config:
+            world_config['removal_x_max'] = camera_config['viewport_x_max_m']
+        elif 'viewport_x_max' in camera_config:
+            world_config['removal_x_max'] = camera_config['viewport_x_max']
 
         # Detecta tipo de escena y aplica callback apropiado
         if "width calibration" in name.lower():
