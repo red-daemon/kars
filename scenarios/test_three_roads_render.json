@@ -1,0 +1,121 @@
+{
+  "name": "Three Roads Rendering Test",
+  "description": "Test rendering of 3 roads with 1, 2, and 3 lanes respectively. No agents, visual test only.",
+  "road": {
+    "roads": [
+      {
+        "id": "road_1lane",
+        "name": "One Lane Road",
+        "speed_limit_kmh": 40.0,
+        "segments": [
+          {
+            "id": "segment_1lane",
+            "start": [
+              0,
+              -30
+            ],
+            "end": [
+              150,
+              -30
+            ],
+            "lanes": [
+              {
+                "id": "lane_1lane_0",
+                "width_m": 4.0,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "road_2lanes",
+        "name": "Two Lanes Road",
+        "speed_limit_kmh": 40.0,
+        "segments": [
+          {
+            "id": "segment_2lanes",
+            "start": [
+              0,
+              0
+            ],
+            "end": [
+              150,
+              0
+            ],
+            "lanes": [
+              {
+                "id": "lane_2lanes_0",
+                "width_m": 4.0,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward"
+              },
+              {
+                "id": "lane_2lanes_1",
+                "width_m": 4.0,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "road_3lanes",
+        "name": "Three Lanes Road",
+        "speed_limit_kmh": 40.0,
+        "segments": [
+          {
+            "id": "segment_3lanes",
+            "start": [
+              0,
+              30
+            ],
+            "end": [
+              150,
+              30
+            ],
+            "lanes": [
+              {
+                "id": "lane_3lanes_0",
+                "width_m": 4.0,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward"
+              },
+              {
+                "id": "lane_3lanes_1",
+                "width_m": 4.0,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward"
+              },
+              {
+                "id": "lane_3lanes_2",
+                "width_m": 4.0,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "agents": [
+    {"id": 1001, "lane": "lane_1lane_0", "position_s": 20.0, "initial_velocity_ms": 0.0, "speed_multiplier_mean": 1.0, "speed_multiplier_stddev": 0.0},
+    {"id": 2001, "lane": "lane_2lanes_0", "position_s": 20.0, "initial_velocity_ms": 0.0, "speed_multiplier_mean": 1.0, "speed_multiplier_stddev": 0.0},
+    {"id": 2002, "lane": "lane_2lanes_1", "position_s": 20.0, "initial_velocity_ms": 0.0, "speed_multiplier_mean": 1.0, "speed_multiplier_stddev": 0.0},
+    {"id": 3001, "lane": "lane_3lanes_0", "position_s": 20.0, "initial_velocity_ms": 0.0, "speed_multiplier_mean": 1.0, "speed_multiplier_stddev": 0.0},
+    {"id": 3002, "lane": "lane_3lanes_1", "position_s": 20.0, "initial_velocity_ms": 0.0, "speed_multiplier_mean": 1.0, "speed_multiplier_stddev": 0.0},
+    {"id": 3003, "lane": "lane_3lanes_2", "position_s": 20.0, "initial_velocity_ms": 0.0, "speed_multiplier_mean": 1.0, "speed_multiplier_stddev": 0.0}
+  ],
+  "world": {
+    "desired_num_agents": 6
+  }
+}

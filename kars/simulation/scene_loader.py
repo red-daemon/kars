@@ -9,6 +9,7 @@ from kars.physics.models import Vector2, Waypoint
 from kars.agents.car_agent import CarAgent
 from kars.environment.lane import Lane
 from kars.environment.segment import RoadSegment
+from kars.environment.road import Road
 from kars.environment.road_network import RoadNetwork
 from kars.simulation.scenes import SceneSetup
 import kars.config as config
@@ -34,15 +35,108 @@ class SceneLoader:
     def create_network_from_config(road_config: Dict[str, Any]) -> RoadNetwork:
         """Crea RoadNetwork desde configuración.
 
+        Soporta dos formatos:
+
+        1. NUEVO (recomendado):
+            "roads": [
+              {
+                "id": "road_0",
+                "name": "Main Street",
+                "segments": [
+                  {
+                    "id": "segment_0",
+                    "start": [x, y],
+                    "end": [x, y],
+                    "lanes": [
+                      {"id": "lane_0", "width_m": 4.0, ...},
+                      {"id": "lane_1", "width_m": 4.0, ...}
+                    ]
+                  }
+                ]
+              }
+            ]
+
+        2. ANTIGUO (compatible):
+            "lanes": [
+              {"id": "lane_0", "start": [x, y], "end": [x, y], ...}
+            ]
+
         Args:
-            road_config: Sección 'road' del YAML
+            road_config: Sección 'road' del JSON
 
         Returns:
-            RoadNetwork con las lanes configuradas
+            RoadNetwork con las roads/segments/lanes configuradas
         """
         network = RoadNetwork()
-        lanes_config = road_config.get('lanes', [])
 
+        # Intenta formato nuevo (roads)
+        roads_config = road_config.get('roads', [])
+        if roads_config:
+            for road_cfg in roads_config:
+                road_id = road_cfg['id']
+                road_name = road_cfg.get('name', road_id)
+                speed_limit_kmh = road_cfg.get('speed_limit_kmh', 50.0)
+                segments_config = road_cfg.get('segments', [])
+
+                segments_list = []
+
+                for seg_cfg in segments_config:
+                    seg_id = seg_cfg['id']
+                    start = seg_cfg['start']  # [x, y]
+                    end = seg_cfg['end']      # [x, y]
+                    lanes_config = seg_cfg.get('lanes', [])
+
+                    lanes_list = []
+                    num_lanes = len(lanes_config)
+
+                    for lane_idx, lane_cfg in enumerate(lanes_config):
+                        lane_id = lane_cfg['id']
+                        width_m = lane_cfg.get('width_m', 4.0)
+                        zone = lane_cfg.get('zone', 'urban')
+                        lane_type = lane_cfg.get('lane_type', 'normal')
+                        direction = lane_cfg.get('direction', 'forward')
+
+                        # Waypoints: todas las lanes comparten la geometría del segment
+                        waypoints = [
+                            Waypoint(Vector2(start[0], start[1]), heading=0),
+                            Waypoint(Vector2(end[0], end[1]), heading=0),
+                        ]
+
+                        # lane_index se calcula automáticamente desde posición en lista
+                        lane = Lane(
+                            lane_id=lane_id,
+                            waypoints=waypoints,
+                            width_m=width_m,
+                            speed_limit_kmh=speed_limit_kmh,
+                            zone=zone,
+                            lane_index=lane_idx,  # Auto-calculado
+                            total_lanes=num_lanes,  # Parámetro para distribución simétrica
+                            lane_type=lane_type,
+                            direction=direction,
+                        )
+                        lanes_list.append(lane)
+
+                    # Crea segment con todas las lanes
+                    segment = RoadSegment(
+                        seg_id,
+                        lanes_list,
+                        Vector2(start[0], start[1]),
+                        Vector2(end[0], end[1])
+                    )
+                    segments_list.append(segment)
+
+                # Crea road con todos los segments
+                road = Road(
+                    road_id=road_id,
+                    name=road_name,
+                    segments=segments_list,
+                    speed_limit_kmh=speed_limit_kmh,
+                )
+                network.add_road(road)
+            return network
+
+        # Fallback: formato antiguo (lanes plano)
+        lanes_config = road_config.get('lanes', [])
         for lane_cfg in lanes_config:
             lane_id = lane_cfg['id']
             start = lane_cfg['start']  # [x, y]
@@ -50,29 +144,26 @@ class SceneLoader:
             width_m = lane_cfg.get('width_m', 2.7)
             speed_limit_kmh = lane_cfg.get('speed_limit_kmh', 50.0)
             zone = lane_cfg.get('zone', 'urban')
-            lane_index = lane_cfg.get('lane_index', 0)
             lane_type = lane_cfg.get('lane_type', 'normal')
             direction = lane_cfg.get('direction', 'forward')
 
-            # Crea waypoints
             waypoints = [
                 Waypoint(Vector2(start[0], start[1]), heading=0),
                 Waypoint(Vector2(end[0], end[1]), heading=0),
             ]
 
-            # Crea lane
             lane = Lane(
                 lane_id=lane_id,
                 waypoints=waypoints,
                 width_m=width_m,
                 speed_limit_kmh=speed_limit_kmh,
                 zone=zone,
-                lane_index=lane_index,
+                lane_index=0,
+                total_lanes=1,  # Single-lane segment
                 lane_type=lane_type,
                 direction=direction,
             )
 
-            # Crea segment y lo agrega
             segment = RoadSegment(
                 f"seg_{lane_id}",
                 [lane],
@@ -181,6 +272,30 @@ class SceneLoader:
             agents.append(agent)
 
         return agents
+
+    @staticmethod
+    def _create_width_calibration_callback():
+        """Callback para escena de calibracion de ancho.
+
+        - Agrega obstaculos cada 10m para verificar el ancho visualmente
+        """
+        obstacles_created = [False]
+
+        def on_tick_width_calibration(world, tick_number):
+            if tick_number == 0 and not obstacles_created[0]:
+                try:
+                    lane = world.network.get_lane("lane_0")
+                    lane_length = lane.length_m()
+
+                    # Agrega un obstáculo al final del carril (para detener carros estáticos)
+                    world.add_permanent_obstacle("lane_0", lane_length)
+
+                    obstacles_created[0] = True
+                    print(f"[SCENE] Width calibration: added single obstacle at end (s={lane_length}m)")
+                except Exception as e:
+                    print(f"Error creating width calibration obstacles: {e}")
+
+        return on_tick_width_calibration
 
     @staticmethod
     def _create_obstacle_avoidance_callback():
@@ -305,6 +420,44 @@ class SceneLoader:
         return on_tick_collision_chain
 
     @staticmethod
+    def _calculate_network_bounds(network: RoadNetwork) -> tuple:
+        """Calcula el bounding box (min_x, min_y, max_x, max_y) de toda la red de carreteras.
+
+        Incluye los márgenes de las calles pero sin margen adicional de padding.
+
+        Params:
+            network: RoadNetwork con todos los segmentos
+
+        Returns:
+            (min_x, min_y, max_x, max_y) en metros mundo
+        """
+        min_x, min_y = float('inf'), float('inf')
+        max_x, max_y = float('-inf'), float('-inf')
+
+        for road in network.roads.values():
+            for segment in road.segments:
+                # Calcula ancho total del segmento (todos los carriles + márgenes)
+                total_width_m = sum(lane.width_m for lane in segment.lanes)
+                half_width = total_width_m / 2.0
+                half_width_with_margins = half_width + config.ROAD_MARGIN_WIDTH_M
+
+                for lane in segment.lanes:
+                    for waypoint in lane.waypoints:
+                        wx = waypoint.position.x
+                        wy = waypoint.position.y
+
+                        # Calcula normal perpendicular
+                        # (para offset lateral, aunque sea simple lo hacemos bien)
+                        min_x = min(min_x, wx)
+                        max_x = max(max_x, wx)
+
+                        # En Y, incluye margen de la calle
+                        min_y = min(min_y, wy - half_width_with_margins)
+                        max_y = max(max_y, wy + half_width_with_margins)
+
+        return (min_x, min_y, max_x, max_y)
+
+    @staticmethod
     def load_scene(filepath: str) -> SceneSetup:
         """Carga escena completa desde JSON.
 
@@ -336,11 +489,44 @@ class SceneLoader:
         if 'desired_num_agents' not in world_config:
             world_config['desired_num_agents'] = len(agents)
 
-        # Configuración de cámara
-        camera_config = config.get('camera', {})
+        # Configuración de cámara (convierte nombres del JSON a names esperados por renderer)
+        camera_config_raw = config.get('camera', {})
+        camera_config = {}
+
+        # Calcula bounding box de la red automáticamente si no se especifica viewport
+        has_explicit_viewport = (
+            'viewport_x_min' in camera_config_raw or
+            'viewport_x_max' in camera_config_raw or
+            'visible_length_m' in camera_config_raw
+        )
+
+        if not has_explicit_viewport:
+            # Calcula automáticamente desde los bounds de la red
+            min_x, min_y, max_x, max_y = SceneLoader._calculate_network_bounds(network)
+            # Usa los bounds exactos sin margen adicional
+            camera_config['viewport_x_min_m'] = min_x
+            camera_config['viewport_x_max_m'] = max_x
+            camera_config['viewport_y_min_m'] = min_y
+            camera_config['viewport_y_max_m'] = max_y
+        else:
+            # Nueva estructura: visible_length_m
+            if 'visible_length_m' in camera_config_raw:
+                camera_config['visible_length_m'] = camera_config_raw['visible_length_m']
+
+            # Formato antiguo: viewport_x_min/max (compatibilidad)
+            if 'viewport_x_min' in camera_config_raw:
+                camera_config['viewport_x_min_m'] = camera_config_raw['viewport_x_min']
+            if 'viewport_x_max' in camera_config_raw:
+                camera_config['viewport_x_max_m'] = camera_config_raw['viewport_x_max']
+            if 'viewport_y_min' in camera_config_raw:
+                camera_config['viewport_y_min_m'] = camera_config_raw['viewport_y_min']
+            if 'viewport_y_max' in camera_config_raw:
+                camera_config['viewport_y_max_m'] = camera_config_raw['viewport_y_max']
 
         # Detecta tipo de escena y aplica callback apropiado
-        if "stop sign" in name.lower():
+        if "width calibration" in name.lower():
+            on_tick_callback = SceneLoader._create_width_calibration_callback()
+        elif "stop sign" in name.lower():
             on_tick_callback = SceneLoader._create_stop_sign_callback()
         elif "collision chain" in name.lower():
             on_tick_callback = SceneLoader._create_collision_chain_callback()

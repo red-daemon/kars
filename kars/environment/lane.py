@@ -36,6 +36,7 @@ class Lane:
     width_m: float = None
     speed_limit_kmh: float = None
     lane_index: int = 0  # 0, 1, 2... Índice secuencial en dirección perpendicular
+    total_lanes: int = 1  # Número total de carriles en el segmento (para distribuir simétricamente)
     lane_type: str = "normal"  # "normal", "ramp_in", "ramp_out" (para futuro)
     direction: str = "forward"  # "forward" o "backward"
     zone: str = "urban"  # Tipo de zona para parámetros de tráfico
@@ -175,8 +176,11 @@ class Lane:
         pos_along = self.position_at(s)
 
         # Multi-carril: desplaza por lane_index en dirección perpendicular
-        if self.lane_index != 0:
-            multi_lane_offset = self._perpendicular_direction * (self.lane_index * self.width_m)
+        # Distribuye simétricamente: (lane_index - (total_lanes - 1) / 2) * width_m
+        # Esto centra cada carril en su propio espacio alrededor del centerline del segmento
+        if self.total_lanes > 1:
+            center_offset = (self.lane_index - (self.total_lanes - 1) / 2.0) * self.width_m
+            multi_lane_offset = self._perpendicular_direction * center_offset
             pos_along = pos_along + multi_lane_offset
 
         # Aplica offset lateral adicional dentro del carril (lateral_offset)

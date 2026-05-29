@@ -67,6 +67,273 @@ class Renderer:
         self.reset_requested = False
         self.camera_config = camera_config or {}
 
+    def _build_segments_cache(self, snapshot: RenderSnapshot) -> pygame.Surface:
+        """Construye una surface con todos los segmentos dibujados como calles unificadas.
+
+        Estructura visual: una calle es una polilínea con ancho. Se dibuja como:
+        ┌────────────────────────────────────┐
+        │ GREEN (fondo)                      │
+        │ ┌──────────────────────────────────┐
+        │ │ GRAY (carpeta asfáltica)         │ ← márgenes + carriles en una tira
+        │ │ WHITE │ [dashed] │ WHITE         │ ← franjas de demarcación encima
+        │ └──────────────────────────────────┘
+        │ GREEN (fondo)                      │
+        └────────────────────────────────────┘
+
+        Para cada segmento, dibuja:
+        1. Un rectángulo gris unificado (borde a borde: márgenes + carriles)
+        2. Franjas blancas sólidas en los bordes externos
+        3. Franjas punteadas entre carriles (si hay múltiples) — TODO
+
+        Args:
+            snapshot: RenderSnapshot con información de segmentos
+
+        Returns:
+            pygame.Surface con segmentos pre-renderizados
+        """
+        surface = pygame.Surface((self.width_px, self.height_px))
+        surface.fill(config.BACKGROUND_COLOR)  # Fondo verde pasto
+
+        # Dibuja cada segmento como una calle unificada
+        for segment in snapshot.segments:
+            segment_id = segment['segment_id']
+            waypoints = segment['waypoints']
+            total_width_m = segment['total_width_m']
+            speed_limit_kmh = segment['speed_limit_kmh']
+            lane_ids = segment['lane_ids']
+
+            if len(waypoints) < 2:
+                continue
+
+            # Convierte waypoints a pantalla
+            screen_points = []
+            for wx, wy in waypoints:
+                px, py = self.viewport.world_to_screen(Vector2(wx, wy))
+                screen_points.append((int(px), int(py)))
+
+            # Calcula el ancho total en metros: carriles + márgenes
+            half_total_width = total_width_m / 2.0
+            total_half_width_with_margins = half_total_width + config.ROAD_MARGIN_WIDTH_M
+
+            # Borde exterior del segmento (márgenes)
+            offset_street_left = []
+            offset_street_right = []
+
+            # Borde interior del segmento (límite del concreto)
+            offset_road_left = []
+            offset_road_right = []
+
+            for i, (wx, wy) in enumerate(waypoints):
+                # Calcula normal (perpendicular a la dirección)
+                if i < len(waypoints) - 1:
+                    next_wx, next_wy = waypoints[i + 1]
+                    dx = next_wx - wx
+                    dy = next_wy - wy
+                else:
+                    prev_wx, prev_wy = waypoints[i - 1]
+                    dx = wx - prev_wx
+                    dy = wy - prev_wy
+
+                length = math.sqrt(dx*dx + dy*dy)
+                if length > 0:
+                    nx = -dy / length
+                    ny = dx / length
+                else:
+                    nx, ny = 0, 0
+
+                # Borde exterior (márgenes incluidos)
+                street_left_x = wx + nx * total_half_width_with_margins
+                street_left_y = wy + ny * total_half_width_with_margins
+                street_right_x = wx - nx * total_half_width_with_margins
+                street_right_y = wy - ny * total_half_width_with_margins
+
+                # Borde interior (donde empieza la carretera)
+                road_left_x = wx + nx * half_total_width
+                road_left_y = wy + ny * half_total_width
+                road_right_x = wx - nx * half_total_width
+                road_right_y = wy - ny * half_total_width
+
+                offset_street_left.append(self.viewport.world_to_screen(Vector2(street_left_x, street_left_y)))
+                offset_street_right.append(self.viewport.world_to_screen(Vector2(street_right_x, street_right_y)))
+                offset_road_left.append(self.viewport.world_to_screen(Vector2(road_left_x, road_left_y)))
+                offset_road_right.append(self.viewport.world_to_screen(Vector2(road_right_x, road_right_y)))
+
+            # Helper: dibuja un strip entre dos líneas paralelas
+            def draw_strip(surface, color, left_line, right_line, min_width_px=2):
+                if len(left_line) < 2 or len(right_line) < 2:
+                    return
+                for i in range(len(left_line) - 1):
+                    p1 = (int(left_line[i][0]), int(left_line[i][1]))
+                    p2 = (int(left_line[i+1][0]), int(left_line[i+1][1]))
+                    p3 = (int(right_line[i+1][0]), int(right_line[i+1][1]))
+                    p4 = (int(right_line[i][0]), int(right_line[i][1]))
+
+                    width_px = abs(p1[0] - p4[0]) + abs(p1[1] - p4[1])
+                    if width_px < min_width_px:
+                        pygame.draw.line(surface, color, p1, p2, max(min_width_px, 2))
+                        pygame.draw.line(surface, color, p4, p3, max(min_width_px, 2))
+                    else:
+                        quad = [p1, p2, p3, p4]
+                        pygame.draw.polygon(surface, color, quad)
+
+            # Dibuja la carpeta asfáltica completa (márgenes + carriles) como un único rectángulo
+            draw_strip(surface, config.COLOR_LANE_ROAD, offset_street_left, offset_street_right)
+
+            # 2. FRANJAS BLANCAS en los bordes de la carpeta asfáltica
+            marking_width_m = config.LANE_MARKING_WIDTH_M
+
+            # Franja blanca izquierda (borde izquierdo del carril)
+            outer_left_edge = []
+            inner_left_edge = []
+            for i, (wx, wy) in enumerate(waypoints):
+                if i < len(waypoints) - 1:
+                    next_wx, next_wy = waypoints[i + 1]
+                    dx = next_wx - wx
+                    dy = next_wy - wy
+                else:
+                    prev_wx, prev_wy = waypoints[i - 1]
+                    dx = wx - prev_wx
+                    dy = wy - prev_wy
+
+                length = math.sqrt(dx*dx + dy*dy)
+                if length > 0:
+                    nx = -dy / length
+                    ny = dx / length
+                else:
+                    nx, ny = 0, 0
+
+                # Franja: desde borde del carril (half_total_width) hacia el margen
+                outer_x = wx + nx * half_total_width
+                outer_y = wy + ny * half_total_width
+                inner_x = wx + nx * (half_total_width - marking_width_m)
+                inner_y = wy + ny * (half_total_width - marking_width_m)
+
+                outer_left_edge.append(self.viewport.world_to_screen(Vector2(outer_x, outer_y)))
+                inner_left_edge.append(self.viewport.world_to_screen(Vector2(inner_x, inner_y)))
+
+            draw_strip(surface, config.COLOR_LANE_BORDER, outer_left_edge, inner_left_edge, min_width_px=2)
+
+            # Franja blanca derecha (borde derecho del carril)
+            outer_right_edge = []
+            inner_right_edge = []
+            for i, (wx, wy) in enumerate(waypoints):
+                if i < len(waypoints) - 1:
+                    next_wx, next_wy = waypoints[i + 1]
+                    dx = next_wx - wx
+                    dy = next_wy - wy
+                else:
+                    prev_wx, prev_wy = waypoints[i - 1]
+                    dx = wx - prev_wx
+                    dy = wy - prev_wy
+
+                length = math.sqrt(dx*dx + dy*dy)
+                if length > 0:
+                    nx = -dy / length
+                    ny = dx / length
+                else:
+                    nx, ny = 0, 0
+
+                # Franja: desde borde del carril (-half_total_width) hacia el margen
+                outer_x = wx - nx * half_total_width
+                outer_y = wy - ny * half_total_width
+                inner_x = wx - nx * (half_total_width - marking_width_m)
+                inner_y = wy - ny * (half_total_width - marking_width_m)
+
+                outer_right_edge.append(self.viewport.world_to_screen(Vector2(outer_x, outer_y)))
+                inner_right_edge.append(self.viewport.world_to_screen(Vector2(inner_x, inner_y)))
+
+            draw_strip(surface, config.COLOR_LANE_BORDER, inner_right_edge, outer_right_edge, min_width_px=2)
+
+            # 4. FRANJAS PUNTEADAS entre carriles (solo si hay más de 1 carril)
+            if len(lane_ids) > 1:
+                # Obtén el ancho de un carril (asumir que todos tienen el mismo)
+                try:
+                    first_lane = self.world.network.get_lane(lane_ids[0])
+                    lane_width_m = first_lane.width_m
+                except:
+                    lane_width_m = config.LANE_WIDTH_M
+
+                # Dibuja línea divisoria entre cada par de carriles adyacentes
+                # La línea divisoria entre carril i y carril i+1 está en: (i+1) * lane_width_m desde el borde izq
+                for divider_index in range(1, len(lane_ids)):
+                    # Posición perpendicular desde el borde izquierdo de la carpeta
+                    divider_offset_m = half_total_width - divider_index * lane_width_m
+
+                    # Calcula puntos de la línea punteada
+                    divider_edge = []
+                    for i, (wx, wy) in enumerate(waypoints):
+                        if i < len(waypoints) - 1:
+                            next_wx, next_wy = waypoints[i + 1]
+                            dx = next_wx - wx
+                            dy = next_wy - wy
+                        else:
+                            prev_wx, prev_wy = waypoints[i - 1]
+                            dx = wx - prev_wx
+                            dy = wy - prev_wy
+
+                        length = math.sqrt(dx*dx + dy*dy)
+                        if length > 0:
+                            nx = -dy / length
+                            ny = dx / length
+                        else:
+                            nx, ny = 0, 0
+
+                        # Posición de la línea divisoria
+                        div_x = wx + nx * divider_offset_m
+                        div_y = wy + ny * divider_offset_m
+                        divider_edge.append(self.viewport.world_to_screen(Vector2(div_x, div_y)))
+
+                    # Dibuja como línea punteada blanca
+                    self._draw_dashed_line(surface, config.COLOR_LANE_BORDER, divider_edge, dash_length_px=8, gap_length_px=8)
+
+        return surface
+
+    def _draw_dashed_line(self, surface: pygame.Surface, color: Tuple, points: list, dash_length_px: int = 8, gap_length_px: int = 8) -> None:
+        """Dibuja una línea punteada entre puntos.
+
+        Params:
+            surface: Surface donde dibujar
+            color: Color RGB
+            points: Lista de tuplas (x, y) en píxeles pantalla
+            dash_length_px: Longitud del trazo en píxeles
+            gap_length_px: Longitud del hueco en píxeles
+        """
+        if len(points) < 2:
+            return
+
+        for i in range(len(points) - 1):
+            p1 = points[i]
+            p2 = points[i + 1]
+
+            # Distancia total entre puntos
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            dist = math.sqrt(dx*dx + dy*dy)
+
+            if dist < 0.1:
+                continue
+
+            # Número de dashes que caben en este segmento
+            dash_cycle = dash_length_px + gap_length_px
+            num_dashes = int(dist / dash_cycle)
+
+            # Dibuja dashes
+            for d in range(num_dashes + 1):
+                start_ratio = (d * dash_cycle) / dist
+                end_ratio = (d * dash_cycle + dash_length_px) / dist
+
+                if start_ratio >= 1.0:
+                    break
+
+                end_ratio = min(end_ratio, 1.0)
+
+                dash_start_x = int(p1[0] + dx * start_ratio)
+                dash_start_y = int(p1[1] + dy * start_ratio)
+                dash_end_x = int(p1[0] + dx * end_ratio)
+                dash_end_y = int(p1[1] + dy * end_ratio)
+
+                pygame.draw.line(surface, color, (dash_start_x, dash_start_y), (dash_end_x, dash_end_y), 2)
+
     def _build_lanes_cache(self, snapshot: RenderSnapshot) -> pygame.Surface:
         """Construye una surface con todos los lanes dibujados.
 
@@ -269,97 +536,186 @@ class Renderer:
             self.screen.blit(text, (int(screen_x) - 15, int(screen_y) + size + 5))
 
     def draw_distance_markers(self, snapshot: RenderSnapshot) -> None:
-        """Dibuja marcadores de distancia (inicio y final de pista).
+        """Dibuja marcadores cada 100 metros a lo largo del carril.
+
+        Solo dibuja marcadores dentro del viewport visible (camera.get_viewport_world_bounds()).
 
         Args:
             snapshot: RenderSnapshot con información de lanes
         """
-        if not snapshot.lanes:
+        if not snapshot.segments:
             return
 
-        lane_id, waypoints, width_m = snapshot.lanes[0]
+        segment = snapshot.segments[0]
+        waypoints = segment['waypoints']
 
-        # Calcula longitud total del carril
-        lane_length_m = sum(
-            math.sqrt((waypoints[i+1][0] - waypoints[i][0])**2 +
-                     (waypoints[i+1][1] - waypoints[i][1])**2)
-            for i in range(len(waypoints)-1)
-        )
+        if len(waypoints) < 2:
+            return
 
-        # Puntos de inicio y final
-        start_pos = Vector2(waypoints[0][0], waypoints[0][1])
-        end_pos = Vector2(waypoints[-1][0], waypoints[-1][1])
+        # Obtén rango visible actual de la cámara (solo X nos interesa para los marcadores)
+        visible_x_min, _, visible_x_max, _ = self.viewport.camera.get_visible_world_bounds()
 
-        # Convierte a pantalla
-        start_screen = self.viewport.world_to_screen(start_pos)
-        end_screen = self.viewport.world_to_screen(end_pos)
+        # Calcula distancias cumulativas para saber dónde está cada 100m
+        cumulative_distances = [0.0]
+        for i in range(len(waypoints) - 1):
+            dx = waypoints[i+1][0] - waypoints[i][0]
+            dy = waypoints[i+1][1] - waypoints[i][1]
+            distance = math.sqrt(dx*dx + dy*dy)
+            cumulative_distances.append(cumulative_distances[-1] + distance)
 
-        # Dibuja líneas verticales en inicio y final
-        line_color = (255, 100, 100)  # Rojo claro
-        line_height = 50
+        total_length = cumulative_distances[-1]
 
-        # Línea en inicio (0m)
-        pygame.draw.line(self.screen, line_color,
-                        (int(start_screen[0]), int(start_screen[1]) - line_height),
-                        (int(start_screen[0]), int(start_screen[1]) + line_height), 3)
+        # Dibuja marcadores cada 100m SOLO en el rango visible
+        marker_interval = 100.0
+        distance_m = 0
+        line_color = (180, 180, 180)  # Gris claro
+        line_height = 20
+        font = pygame.font.Font(None, 10)
 
-        # Línea en final (1000m)
-        pygame.draw.line(self.screen, line_color,
-                        (int(end_screen[0]), int(end_screen[1]) - line_height),
-                        (int(end_screen[0]), int(end_screen[1]) + line_height), 3)
+        while distance_m <= total_length:
+            # Encuentra el índice en waypoints más cercano a esta distancia
+            idx = 0
+            for i, cum_dist in enumerate(cumulative_distances):
+                if cum_dist <= distance_m:
+                    idx = i
+                else:
+                    break
 
-        # Etiquetas de distancia
-        font = pygame.font.Font(None, 18)
+            if idx >= len(waypoints) - 1:
+                distance_m += marker_interval
+                continue
 
-        # "0m" en inicio
-        text_0 = font.render("0m", True, line_color)
-        self.screen.blit(text_0, (int(start_screen[0]) - 15, int(start_screen[1]) + line_height + 5))
+            # Interpola posición entre waypoints
+            dist_in_segment = distance_m - cumulative_distances[idx]
+            segment_length = cumulative_distances[idx + 1] - cumulative_distances[idx]
 
-        # "1000m" en final
-        text_end = font.render(f"{lane_length_m:.0f}m", True, line_color)
-        self.screen.blit(text_end, (int(end_screen[0]) - 35, int(end_screen[1]) + line_height + 5))
+            if segment_length > 0:
+                t = dist_in_segment / segment_length
+                marker_x = waypoints[idx][0] + t * (waypoints[idx+1][0] - waypoints[idx][0])
+                marker_y = waypoints[idx][1] + t * (waypoints[idx+1][1] - waypoints[idx][1])
+            else:
+                marker_x, marker_y = waypoints[idx]
+
+            # Solo dibuja si el marcador está dentro del viewport visible
+            if visible_x_min <= marker_x <= visible_x_max:
+                # Convierte a pantalla
+                screen_pos = self.viewport.world_to_screen(Vector2(marker_x, marker_y))
+
+                # Dibuja pequeña línea vertical
+                pygame.draw.line(self.screen, line_color,
+                               (int(screen_pos[0]), int(screen_pos[1]) - line_height),
+                               (int(screen_pos[0]), int(screen_pos[1]) + line_height), 1)
+
+                # Etiqueta con distancia
+                text = font.render(f"{int(distance_m)}m", True, line_color)
+                self.screen.blit(text, (int(screen_pos[0]) - 8, int(screen_pos[1]) - line_height - 12))
+
+            distance_m += marker_interval
 
     def draw_speed_limit_sign(self, snapshot: RenderSnapshot) -> None:
-        """Dibuja indicador de límite de velocidad a 10m del inicio de cada carril.
+        """Dibuja indicador de límite de velocidad UNA VEZ por segmento.
 
-        Cuadrado blanco pequeño con número negro indicando velocidad en km/h.
-        Posicionado fuera de la calle (arriba) con margen reducido.
+        Cuadrado blanco fijo de 32×32 píxeles con número negro indicando velocidad en km/h.
+        Posicionado 1.0m hacia afuera del borde exterior de la calle (perpendicular).
+        El tamaño no cambia con zoom ni con el número de carriles, pero su posición
+        siempre sigue la geometría de la calle.
 
         Args:
-            snapshot: RenderSnapshot con información de lanes
+            snapshot: RenderSnapshot con información de segmentos
         """
-        if not snapshot.lanes:
+        if not snapshot.segments:
+            # Fallback si no hay segmentos (usar lanes antiguos)
+            if snapshot.lanes:
+                for lane_id, waypoints, width_m in snapshot.lanes:
+                    if len(waypoints) < 2:
+                        continue
+                    sign_position_s = 10.0
+                    sign_world_pos = Vector2(waypoints[0][0] + sign_position_s, waypoints[0][1])
+                    sign_screen = self.viewport.world_to_screen(sign_world_pos)
+                    try:
+                        lane = self.world.network.get_lane(lane_id)
+                        speed_limit_kmh = int(lane.speed_limit_kmh)
+                    except:
+                        speed_limit_kmh = 60
+                    sign_size = 20
+                    offset_y = -40
+                    rect = pygame.Rect(
+                        int(sign_screen[0]) - sign_size // 2,
+                        int(sign_screen[1]) + offset_y - sign_size // 2,
+                        sign_size,
+                        sign_size
+                    )
+                    pygame.draw.rect(self.screen, (255, 255, 255), rect)
+                    pygame.draw.rect(self.screen, (0, 0, 0), rect, 2)
+                    font = pygame.font.Font(None, 16)
+                    text = font.render(str(speed_limit_kmh), True, (0, 0, 0))
+                    text_rect = text.get_rect(center=(int(sign_screen[0]), int(sign_screen[1]) + offset_y))
+                    self.screen.blit(text, text_rect)
             return
 
-        # Dibuja para cada carril
-        for lane_id, waypoints, width_m in snapshot.lanes:
+        # Dibuja UNO por segmento
+        for segment in snapshot.segments:
+            waypoints = segment['waypoints']
+            speed_limit_kmh = int(segment['speed_limit_kmh'])
+            total_width_m = segment['total_width_m']
+
             if len(waypoints) < 2:
                 continue
 
-            # Posición: 10m desde el inicio del carril
-            sign_position_s = 10.0
-            sign_world_pos = Vector2(waypoints[0][0] + sign_position_s, waypoints[0][1])
+            # Interpola posición a 16m desde el inicio del segmento
+            target_distance_m = 16.0
+            accumulated_distance = 0.0
+            wx, wy = waypoints[0]
+
+            for i in range(len(waypoints) - 1):
+                w1 = waypoints[i]
+                w2 = waypoints[i + 1]
+                segment_length = math.sqrt((w2[0] - w1[0])**2 + (w2[1] - w1[1])**2)
+
+                if accumulated_distance + segment_length >= target_distance_m:
+                    # La posición objetivo está en este segmento
+                    ratio = (target_distance_m - accumulated_distance) / segment_length if segment_length > 0 else 0
+                    wx = w1[0] + ratio * (w2[0] - w1[0])
+                    wy = w1[1] + ratio * (w2[1] - w1[1])
+                    break
+                accumulated_distance += segment_length
+            else:
+                # Si no alcanza 20m, usa el último waypoint
+                wx, wy = waypoints[-1]
+
+            # Calcula vector normal en el siguiente punto
+            next_idx = min(1, len(waypoints) - 1)
+            next_wx, next_wy = waypoints[next_idx]
+            dx = next_wx - waypoints[0][0]
+            dy = next_wy - waypoints[0][1]
+            length = math.sqrt(dx*dx + dy*dy)
+            if length > 0:
+                nx = -dy / length
+                ny = dx / length
+            else:
+                continue
+
+            # Posición en mundo: borde exterior del asfalto + 20 píxeles adicionales
+            half_total_width = total_width_m / 2.0
+            scale = config.SCALE_PX_PER_M * self.viewport.camera.zoom
+            # Convierte 20 píxeles a metros en mundo
+            additional_offset_m = 20.0 / scale
+            offset_m = half_total_width + config.ROAD_MARGIN_WIDTH_M + additional_offset_m
+
+            sign_world_x = wx + nx * offset_m
+            sign_world_y = wy + ny * offset_m
+            sign_world_pos = Vector2(sign_world_x, sign_world_y)
 
             # Convierte a pantalla
             sign_screen = self.viewport.world_to_screen(sign_world_pos)
 
-            # Obtiene velocidad límite del carril desde la escena
-            try:
-                lane = self.world.network.get_lane(lane_id)
-                speed_limit_kmh = int(lane.speed_limit_kmh)
-            except:
-                speed_limit_kmh = 60
-
-            # Dimensiones del cuadrado (3/4 del tamaño anterior: 30 * 0.75 ≈ 23)
-            sign_size = 20
-
-            # Offset hacia arriba (fuera de la calle) con margen reducido a la mitad
-            offset_y = -40
+            # Tamaño fijo del signo en píxeles: mitad del anterior (16)
+            sign_size = 22
 
             # Dibuja cuadrado blanco fuera de la calle
             rect = pygame.Rect(
                 int(sign_screen[0]) - sign_size // 2,
-                int(sign_screen[1]) + offset_y - sign_size // 2,
+                int(sign_screen[1]) - sign_size // 2,
                 sign_size,
                 sign_size
             )
@@ -367,9 +723,10 @@ class Renderer:
             pygame.draw.rect(self.screen, (0, 0, 0), rect, 2)    # Borde negro
 
             # Dibuja número en negro
-            font = pygame.font.Font(None, 16)
+            font_size = max(16, sign_size // 2.5)
+            font = pygame.font.Font(None, font_size)
             text = font.render(str(speed_limit_kmh), True, (0, 0, 0))
-            text_rect = text.get_rect(center=(int(sign_screen[0]), int(sign_screen[1]) + offset_y))
+            text_rect = text.get_rect(center=(int(sign_screen[0]), int(sign_screen[1])))
             self.screen.blit(text, text_rect)
 
     def draw_stop_signs(self, snapshot: RenderSnapshot) -> None:
@@ -449,13 +806,19 @@ class Renderer:
                 continue
 
     def draw_lane_cached(self, snapshot: RenderSnapshot) -> None:
-        """Dibuja lanes usando cache estático.
+        """Dibuja segmentos usando cache estático.
+
+        El clipping ya está aplicado en run_frame(), así que solo dibujamos.
 
         Args:
-            snapshot: RenderSnapshot con información de lanes
+            snapshot: RenderSnapshot con información de segmentos
         """
         if not self.lanes_cache_valid or self.lanes_cache_surface is None:
-            self.lanes_cache_surface = self._build_lanes_cache(snapshot)
+            # Usa segmentos (multi-carril) si están disponibles, si no usa lanes
+            if snapshot.segments:
+                self.lanes_cache_surface = self._build_segments_cache(snapshot)
+            else:
+                self.lanes_cache_surface = self._build_lanes_cache(snapshot)
             self.lanes_cache_valid = True
 
         self.screen.blit(self.lanes_cache_surface, (0, 0))
@@ -706,33 +1069,52 @@ class Renderer:
 
         # Configuración inicial: centra en todas las calles (solo una vez)
         if not self.initial_zoom_done and len(snapshot.lanes) > 0:
-            # Si hay configuración de viewport, úsala; si no, auto-fit
-            if 'viewport_x_min_m' in self.camera_config and 'viewport_x_max_m' in self.camera_config:
-                # Viewport configurado: muestra solo una porción del mundo
+            # Determina viewport: visible_length_m o viewport_x_min/max
+            x_min = None
+            x_max = None
+
+            if 'visible_length_m' in self.camera_config:
+                # Nueva estructura: visible_length_m define cuánto ver en pantalla (0 a visible_length)
+                # Márgenes existen en el mundo (-20 a 0, visible_length a visible_length+20) pero no se ven
+                visible_length = self.camera_config['visible_length_m']
+                x_min = 0  # La pantalla muestra desde 0m
+                x_max = visible_length  # Hasta visible_length_m
+            elif 'viewport_x_min_m' in self.camera_config and 'viewport_x_max_m' in self.camera_config:
+                # Formato antiguo: viewport_x_min/max (compatibilidad)
                 x_min = self.camera_config['viewport_x_min_m']
                 x_max = self.camera_config['viewport_x_max_m']
 
-                # Obtén altura máxima de los carriles para centrar verticalmente
-                min_y, max_y = float('inf'), float('-inf')
-                for lane_id, waypoints, width_m in snapshot.lanes:
-                    for wx, wy in waypoints:
-                        min_y = min(min_y, wy - width_m/2)
-                        max_y = max(max_y, wy + width_m/2)
+            # Si se definió viewport, úsalo
+            if x_min is not None and x_max is not None:
+                # Usa Y explícito si se proporciona, si no calcula desde lanes
+                if 'viewport_y_min_m' in self.camera_config and 'viewport_y_max_m' in self.camera_config:
+                    min_y = self.camera_config['viewport_y_min_m']
+                    max_y = self.camera_config['viewport_y_max_m']
+                else:
+                    # Obtén altura máxima de los carriles para centrar verticalmente
+                    min_y, max_y = float('inf'), float('-inf')
+                    for lane_id, waypoints, width_m in snapshot.lanes:
+                        for wx, wy in waypoints:
+                            min_y = min(min_y, wy - width_m/2)
+                            max_y = max(max_y, wy + width_m/2)
 
                 viewport_width_m = x_max - x_min
                 viewport_height_m = max_y - min_y if max_y != float('-inf') else 10.0
 
                 # Calcula zoom para que el viewport quepa bien en pantalla
                 scale_px_per_m = config.SCALE_PX_PER_M
+
+                # IMPORTANTE: Cuando el viewport se especifica explícitamente (visible_length_m o viewport_x_min/max),
+                # debemos respetar el ancho exactamente. El zoom DEBE ser tal que viewport_width_m cabe exactamente en width_px.
+                # No usamos min(zoom_x, zoom_y) porque eso permitiría que el zoom_y reduzca y se viera más ancho.
                 zoom_x = self.width_px / (viewport_width_m * scale_px_per_m)
-                zoom_y = self.height_px / (viewport_height_m * scale_px_per_m)
-                required_zoom = min(zoom_x, zoom_y)
-                self.viewport.camera.set_zoom(required_zoom)
+                self.viewport.camera.set_zoom(zoom_x)
 
                 # Centra en el viewport configurado
                 center_x = (x_min + x_max) / 2.0
                 center_y = (min_y + max_y) / 2.0 if max_y != float('-inf') else 0.0
                 self.viewport.camera.center_on(Vector2(center_x, center_y))
+
             else:
                 # Auto-fit: calcula bounding box de todas las calles
                 min_x, max_x = float('inf'), float('-inf')
@@ -765,7 +1147,21 @@ class Renderer:
         # Actualiza HUD
         self.hud.update(snapshot, world)
 
-        # Dibuja escena
+        # Aplica clipping al viewport visible ANTES de dibujar
+        # Esto evita que se vea fuera del rango configurado (especialmente importante con visible_length_m)
+        visible_x_min, visible_y_min, visible_x_max, visible_y_max = self.viewport.camera.get_visible_world_bounds()
+        top_left_screen = self.viewport.world_to_screen(Vector2(visible_x_min, visible_y_min))
+        bottom_right_screen = self.viewport.world_to_screen(Vector2(visible_x_max, visible_y_max))
+
+        clip_rect = pygame.Rect(
+            min(int(top_left_screen[0]), int(bottom_right_screen[0])),
+            min(int(top_left_screen[1]), int(bottom_right_screen[1])),
+            abs(int(bottom_right_screen[0]) - int(top_left_screen[0])),
+            abs(int(bottom_right_screen[1]) - int(top_left_screen[1]))
+        )
+        self.screen.set_clip(clip_rect)
+
+        # Dibuja escena (ya con clipping aplicado)
         self.screen.fill(config.BACKGROUND_COLOR)
 
         # Dibuja lanes (cache)
@@ -786,7 +1182,7 @@ class Renderer:
                 # Si hay error, usa la posición original
                 self.draw_agent(agent_id, world_pos, heading, speed_kmh, is_selected, lane_s=s)
 
-        # Dibuja marcadores de distancia (inicio y final de pista)
+        # Dibuja marcadores de distancia cada 100 metros
         self.draw_distance_markers(snapshot)
 
         # Dibuja indicador de límite de velocidad
@@ -800,6 +1196,9 @@ class Renderer:
 
         # Dibuja línea de parada (blanca) donde deberían detenerse los vehículos
         self.draw_stopping_line(snapshot)
+
+        # Remueve clipping para que el HUD se dibuje sin restricciones
+        self.screen.set_clip(None)
 
         # Actualiza FPS
         self.update_fps()
