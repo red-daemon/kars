@@ -15,11 +15,58 @@ from kars.simulation.scene_loader import SceneLoader
 from kars.rendering.renderer import Renderer
 
 
-def main(scene_name: str = "test_single_car_acceleration"):
+# Mapa de códigos cortos a nombres de escenarios
+SCENARIO_SHORTCUTS = {
+    '1': 'test_single_car_acceleration',
+    '2': 'test_simple_respawn',
+    '3': 'test_collision_chain',
+    '4': 'test_multi_lane_basic',
+    '5': 'test_multi_lane_speeds',
+    '6': 'test_obstacle_avoidance',
+    '7': 'test_stop_sign',
+    '8': 'test_grid_calibration',
+    '9': 'test_120m_street',
+}
+
+
+def show_scenario_menu():
+    """Muestra menú de escenarios y retorna el nombre seleccionado."""
+    print("\n" + "=" * 70)
+    print("  SELECCIONAR ESCENARIO")
+    print("=" * 70)
+
+    for code, name in SCENARIO_SHORTCUTS.items():
+        display_name = name.replace('test_', '').replace('_', ' ').title()
+        print(f"  [{code}] {display_name}")
+
+    print("\nIngresa código (1-9) o nombre completo, o presiona Enter para default (1):")
+    user_input = input("> ").strip()
+
+    # Si es vacío, usa default
+    if not user_input:
+        return SCENARIO_SHORTCUTS['1']
+
+    # Si es un código corto
+    if user_input in SCENARIO_SHORTCUTS:
+        return SCENARIO_SHORTCUTS[user_input]
+
+    # Si es un nombre completo
+    if Path("scenarios") / f"{user_input}.json" in Path("scenarios").glob("*.json"):
+        return user_input
+
+    print(f"\n[ERROR] Entrada no reconocida: {user_input}")
+    return show_scenario_menu()
+
+
+def main(scene_name: str = None):
     """Demostración visual interactiva del simulador."""
     print("\n" + "=" * 70)
     print("  KARS: INTERFAZ GRÁFICA INTERACTIVA")
     print("=" * 70)
+
+    # Si no se pasa escena, muestra menú
+    if not scene_name:
+        scene_name = show_scenario_menu()
 
     # Carga escena desde JSON
     print(f"\n[Setup] Cargando escena: {scene_name}...")
@@ -119,5 +166,10 @@ def main(scene_name: str = "test_single_car_acceleration"):
 
 
 if __name__ == "__main__":
-    scene_name = sys.argv[1] if len(sys.argv) > 1 else "test_single_car_acceleration"
+    # Si se pasa argumento, úsalo como nombre de escena
+    # Si se pasa un código (1-9), convierte a nombre completo
+    scene_name = None
+    if len(sys.argv) > 1:
+        arg = sys.argv[1]
+        scene_name = SCENARIO_SHORTCUTS.get(arg, arg)
     main(scene_name)

@@ -1290,12 +1290,12 @@ class Renderer:
         # Dibuja escena (ya con clipping aplicado)
         self.screen.fill(config.BACKGROUND_COLOR)
 
-        # Dibuja malla de calibración si está configurada en camera_config
-        if self.camera_config.get('show_grid', False):
-            self.draw_grid()
-
         # Dibuja lanes (cache)
         self.draw_lane_cached(snapshot)
+
+        # Dibuja malla de calibración si está configurada en camera_config (después de lanes para que sea visible)
+        if self.camera_config.get('show_grid', False):
+            self.draw_grid()
 
         # Dibuja agentes
         for agent_id, world_pos, heading, speed_kmh, lane_id, s in snapshot.agents:

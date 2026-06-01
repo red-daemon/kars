@@ -1,12 +1,12 @@
 {
-  "name": "Collision Chain - Hidden Car",
-  "description": "Carro A en s=50m viaja a 60 km/h. Despu\u00c3\u00a9s de 2s, aparece Carro B parado en s=120m. Carro A colisiona sin tiempo para frenar. Carro C en s=0m frena ante A deshabilitado. Validar cadena de colisiones.",
+  "name": "120m Street Calibration",
+  "description": "Calle de 120m para verificar calibración visual con malla de coordenadas",
   "road": {
     "roads": [
       {
         "id": "road_0",
-        "name": "Road 0",
-        "speed_limit_kmh": 60.0,
+        "name": "120m Street",
+        "speed_limit_kmh": 30.0,
         "segments": [
           {
             "id": "segment_0",
@@ -36,19 +36,8 @@
     {
       "id": 1001,
       "lane": "lane_0",
-      "position_s": -62.0,
-      "initial_velocity_ms": 5.56,
-      "speed_multiplier_mean": 1.0,
-      "speed_multiplier_stddev": 0.05,
-      "time_headway_s": 1.5,
-      "max_accel_ms2": 2.0,
-      "critical_gap_m": 5.0
-    },
-    {
-      "id": 1002,
-      "lane": "lane_0",
-      "position_s": 50.0,
-      "initial_velocity_ms": 16.67,
+      "position_s": 0.0,
+      "initial_velocity_ms": 0.0,
       "speed_multiplier_mean": 1.0,
       "speed_multiplier_stddev": 0.05,
       "time_headway_s": 1.5,
@@ -57,7 +46,8 @@
     }
   ],
   "world": {
-    "allow_spawning": false
+    "allow_spawning": false,
+    "desired_num_agents": 1
   },
   "camera": {
     "show_grid": true,
