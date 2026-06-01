@@ -552,26 +552,6 @@ class Renderer:
             text = font.render("STOP", True, line_color)
             self.screen.blit(text, (int(screen_x) - 15, int(screen_y) + size + 5))
 
-    def draw_mouse_coords(self) -> None:
-        """Dibuja las coordenadas del mouse en pantalla (ambas en píxeles y mundo)."""
-        mouse_x, mouse_y = pygame.mouse.get_pos()
-        world_pos = self.viewport.screen_to_world((mouse_x, mouse_y))
-
-        font = pygame.font.Font(None, 16)
-        text_lines = [
-            f"Screen: ({mouse_x}, {mouse_y})",
-            f"World: ({world_pos.x:.1f}m, {world_pos.y:.1f}m)"
-        ]
-
-        # Dibuja en el centro de la pantalla
-        y_offset = self.height_px // 2 - 20
-        x_offset = self.width_px // 2 - 100
-
-        for line in text_lines:
-            text = font.render(line, True, (0, 255, 0), (0, 0, 0))
-            self.screen.blit(text, (x_offset, y_offset))
-            y_offset += 20
-
     def draw_viewport_bounds(self) -> None:
         """Dibuja un rectángulo en los bordes del viewport visible (coordenadas mundo).
 
@@ -630,10 +610,11 @@ class Renderer:
             # Origen (0m) en rojo, otras en blanco
             color = (255, 0, 0) if abs(x) < 0.01 else (255, 255, 255)
             pygame.draw.line(self.screen, color, (sx_int, 0), (sx_int, self.height_px), 1)
-            # Etiqueta con coordenada mundo (arriba, solo si está dentro de pantalla)
+            # Etiqueta con coordenada mundo a la altura de y=30m
+            _, sy_30 = self.viewport.world_to_screen(Vector2(0, 30.0))
             if 0 <= sx_int < self.width_px:
                 label = font.render(f"{int(x)}m", True, (255, 255, 100))
-                self.screen.blit(label, (sx_int - 12, 5))
+                self.screen.blit(label, (sx_int - 12, int(sy_30)))
             x += grid_m
 
         # Líneas horizontales (cada 10m en Y)
@@ -1353,9 +1334,6 @@ class Renderer:
         # Remueve clipping para que el HUD se dibuje sin restricciones
         self.screen.set_clip(None)
 
-        # Dibuja coordenadas del mouse (después de remover clipping)
-        if self.camera_config.get('show_grid', False):
-            self.draw_mouse_coords()
 
         # Actualiza FPS
         self.update_fps()
