@@ -76,8 +76,8 @@ class World:
         self.desired_num_agents = desired_num_agents
         self.spawn_wait_time_remaining_s = 0.0
         self.spawn_wait_initialized = False
-        # Parámetros de template para nuevos agentes
-        self.agent_template = None  # Se llena después de agregar agentes iniciales
+        # Parámetros de template para nuevos agentes (por carril para soportar parámetros individuales)
+        self.agent_templates_by_lane = {}  # Dict[lane_id] = template_dict, se llena conforme se agregan agentes
 
         # Estado temporalizado
         self.tick_number = 0
@@ -120,24 +120,26 @@ class World:
         """
         self.agents[agent.agent_id] = agent
 
-        # Si es el primer agente y no hay template, usarlo como template
-        if self.agent_template is None and len(self.agents) == 1:
+        # Si no hay template para este carril, crear uno basado en este agente
+        if agent.current_lane_id not in self.agent_templates_by_lane:
             self._set_agent_template(agent)
 
     def _set_agent_template(self, agent: CarAgent) -> None:
-        """Guarda parámetros de un agente como template para futuros spawns.
+        """Guarda parámetros de un agente como template para futuros spawns en su carril.
 
         Nota: speed_multiplier se recalcula aleatoriamente en cada spawn.
 
         Args:
             agent: Agente de referencia
         """
-        self.agent_template = {
+        template = {
             'lane_id': agent.current_lane_id,
             'speed_multiplier': agent.speed_multiplier,
             'speed_multiplier_mean': getattr(agent, '_speed_multiplier_mean', 1.0),
             'speed_multiplier_stddev': getattr(agent, '_speed_multiplier_stddev', 0.2),
             'lane_speed_limit_kmh': getattr(agent, '_lane_speed_limit_kmh', 50.0),
+            'desired_speed_mean_ms': agent.desired_speed_mean_ms,
+            'speed_oscillation_range_ms': agent.speed_oscillation_range_ms,
             'idm_time_headway': agent.idm_behavior.time_headway,
             'idm_max_accel': agent.idm_behavior.max_accel,
             'critical_gap_m': agent.critical_gap_m,
@@ -145,41 +147,52 @@ class World:
             'stop_sign_wait_stddev_s': agent.stop_sign_wait_stddev_s,
             'stop_sign_buffer_m': agent.stop_sign_buffer_m,
         }
+        self.agent_templates_by_lane[agent.current_lane_id] = template
 
-    def _spawn_agent_from_template(self) -> int:
-        """Crea un nuevo agente con parámetros del template.
+    def _spawn_agent_from_template(self, lane_id: str) -> int:
+        """Crea un nuevo agente con parámetros del template del carril.
+
+        Args:
+            lane_id: ID del carril donde hacer spawn
 
         Returns:
             ID del agente creado, o -1 si falló
         """
-        if self.agent_template is None:
+        if lane_id not in self.agent_templates_by_lane:
             return -1
 
+        template = self.agent_templates_by_lane[lane_id]
         try:
-            lane = self.network.get_lane(self.agent_template['lane_id'])
+            lane = self.network.get_lane(lane_id)
 
             # Crea agente al inicio
             agent = CarAgent(
                 agent_id=self.get_next_agent_id(),
-                current_lane_id=self.agent_template['lane_id'],
+                current_lane_id=lane_id,
                 position_along_lane_s=0.1,
                 lateral_offset=0.0,
             )
 
             # Recalcula speed_multiplier aleatoriamente (no copia del template)
-            speed_mult_mean = self.agent_template.get('speed_multiplier_mean', 1.0)
-            speed_mult_stddev = self.agent_template.get('speed_multiplier_stddev', 0.2)
+            speed_mult_mean = template.get('speed_multiplier_mean', 1.0)
+            speed_mult_stddev = template.get('speed_multiplier_stddev', 0.2)
             speed_multiplier = random.gauss(speed_mult_mean, speed_mult_stddev)
             speed_multiplier = max(0.5, min(1.5, speed_multiplier))
 
             object.__setattr__(agent, 'speed_multiplier', speed_multiplier)
-            object.__setattr__(agent, 'critical_gap_m', self.agent_template['critical_gap_m'])
-            object.__setattr__(agent, 'stop_sign_wait_mean_s', self.agent_template['stop_sign_wait_mean_s'])
-            object.__setattr__(agent, 'stop_sign_wait_stddev_s', self.agent_template['stop_sign_wait_stddev_s'])
-            object.__setattr__(agent, 'stop_sign_buffer_m', self.agent_template['stop_sign_buffer_m'])
+            object.__setattr__(agent, 'critical_gap_m', template['critical_gap_m'])
+            object.__setattr__(agent, 'stop_sign_wait_mean_s', template['stop_sign_wait_mean_s'])
+            object.__setattr__(agent, 'stop_sign_wait_stddev_s', template['stop_sign_wait_stddev_s'])
+            object.__setattr__(agent, 'stop_sign_buffer_m', template['stop_sign_buffer_m'])
+
+            # Configura parámetros de oscilación de velocidad (fijos desde spawn)
+            desired_speed_mean_ms = (template.get('lane_speed_limit_kmh', 50.0) * speed_multiplier) / 3.6
+            speed_oscillation_range_ms = template.get('speed_oscillation_range_ms', 0.0)
+            object.__setattr__(agent, 'desired_speed_mean_ms', desired_speed_mean_ms)
+            object.__setattr__(agent, 'speed_oscillation_range_ms', speed_oscillation_range_ms)
 
             # Configura IDM con velocidad deseada basada en nuevo multiplicador
-            lane_speed_limit_kmh = self.agent_template.get('lane_speed_limit_kmh', 50.0)
+            lane_speed_limit_kmh = template.get('lane_speed_limit_kmh', 50.0)
             desired_speed_ms = (lane_speed_limit_kmh * speed_multiplier) / 3.6
 
             object.__setattr__(
@@ -190,12 +203,12 @@ class World:
             object.__setattr__(
                 agent.idm_behavior,
                 'time_headway',
-                self.agent_template['idm_time_headway']
+                template['idm_time_headway']
             )
             object.__setattr__(
                 agent.idm_behavior,
                 'max_accel',
-                self.agent_template['idm_max_accel']
+                template['idm_max_accel']
             )
 
             # Posiciona en mundo
@@ -420,8 +433,10 @@ class World:
                 if self.spawn_wait_initialized:
                     self.spawn_wait_time_remaining_s -= config.TICK_DT_S * self.sim_speed_factor
                     if self.spawn_wait_time_remaining_s <= 0:
-                        # Crear agente
-                        self._spawn_agent_from_template()
+                        # Crear agente en un carril disponible (elige aleatorio de los templates disponibles)
+                        if self.agent_templates_by_lane:
+                            lane_id = random.choice(list(self.agent_templates_by_lane.keys()))
+                            self._spawn_agent_from_template(lane_id)
                         # Resetear para próximo spawn
                         self.spawn_wait_initialized = False
             else:

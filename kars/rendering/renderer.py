@@ -602,6 +602,14 @@ class Renderer:
         vis_x_min, vis_y_min, vis_x_max, vis_y_max = self.viewport.camera.get_visible_world_bounds()
         font = pygame.font.Font(None, 16)
 
+        # Obtén posición del eje Y=0 en pantalla (para etiquetar coordenadas X sobre el eje)
+        _, sy_axis = self.viewport.world_to_screen(Vector2(0, 0))
+        sy_axis_int = int(sy_axis)
+
+        # Obtén posición del eje X=0 en pantalla (para etiquetar coordenadas Y sobre el eje)
+        sx_axis, _ = self.viewport.world_to_screen(Vector2(0, 0))
+        sx_axis_int = int(sx_axis)
+
         # Líneas verticales (cada 10m en X)
         x = math.floor(vis_x_min / grid_m) * grid_m
         while x <= vis_x_max + 0.01:
@@ -610,11 +618,10 @@ class Renderer:
             # Origen (0m) en rojo, otras en blanco
             color = (255, 0, 0) if abs(x) < 0.01 else (255, 255, 255)
             pygame.draw.line(self.screen, color, (sx_int, 0), (sx_int, self.height_px), 1)
-            # Etiqueta con coordenada mundo a la altura de y=30m
-            _, sy_30 = self.viewport.world_to_screen(Vector2(0, 30.0))
-            if 0 <= sx_int < self.width_px:
+            # Etiqueta sobre el eje Y=0 (eje horizontal)
+            if 0 <= sx_int < self.width_px and 0 <= sy_axis_int < self.height_px:
                 label = font.render(f"{int(x)}m", True, (255, 255, 100))
-                self.screen.blit(label, (sx_int - 12, int(sy_30)))
+                self.screen.blit(label, (sx_int - 12, sy_axis_int + 2))
             x += grid_m
 
         # Líneas horizontales (cada 10m en Y)
@@ -625,10 +632,10 @@ class Renderer:
             # Origen (0m) en rojo, otras en blanco
             color = (255, 0, 0) if abs(y) < 0.01 else (255, 255, 255)
             pygame.draw.line(self.screen, color, (0, sy_int), (self.width_px, sy_int), 1)
-            # Etiqueta con coordenada mundo (izquierda, solo si está dentro de pantalla)
-            if 0 <= sy_int < self.height_px:
+            # Etiqueta sobre el eje X=0 (eje vertical)
+            if 0 <= sx_axis_int < self.width_px and 0 <= sy_int < self.height_px:
                 label = font.render(f"{int(y)}m", True, (255, 255, 100))
-                self.screen.blit(label, (5, sy_int - 8))
+                self.screen.blit(label, (sx_axis_int + 2, sy_int - 8))
             y += grid_m
 
     def draw_distance_markers(self, snapshot: RenderSnapshot) -> None:
@@ -1191,9 +1198,11 @@ class Renderer:
             # Si se definió viewport, úsalo
             if x_min is not None and x_max is not None:
                 # Usa Y explícito si se proporciona, si no calcula desde lanes
+                explicit_viewport_y = False
                 if 'viewport_y_min_m' in self.camera_config and 'viewport_y_max_m' in self.camera_config:
                     min_y = self.camera_config['viewport_y_min_m']
                     max_y = self.camera_config['viewport_y_max_m']
+                    explicit_viewport_y = True
                 else:
                     # Obtén altura máxima de los carriles para centrar verticalmente
                     min_y, max_y = float('inf'), float('-inf')
@@ -1205,17 +1214,22 @@ class Renderer:
                 viewport_width_m = x_max - x_min
                 viewport_height_m = max_y - min_y if max_y != float('-inf') else 10.0
 
+                # Si Y fue explícitamente configurado, ajustarlo para que la relación de aspecto coincida
+                # con el drawable area, manteniendo el centro en Y
+                if explicit_viewport_y:
+                    # Calcula la altura necesaria para mantener la relación de aspecto del drawable area
+                    desired_height_m = viewport_width_m * self.drawable_height_px / self.width_px
+                    center_y = (min_y + max_y) / 2.0
+                    min_y = center_y - desired_height_m / 2.0
+                    max_y = center_y + desired_height_m / 2.0
+                    viewport_height_m = desired_height_m
+
                 # Calcula zoom para que el viewport quepa bien en pantalla
                 scale_px_per_m = config.SCALE_PX_PER_M
 
-                # IMPORTANTE: Cuando el viewport se especifica explícitamente (visible_length_m o viewport_x_min/max),
-                # debemos respetar el ancho exactamente. El zoom DEBE ser tal que viewport_width_m caba exactamente en width_px.
-                # No usamos min(zoom_x, zoom_y) porque eso permitiría que el zoom_y reduzca y se viera más ancho.
-                # Usa el espacio dibujable real (excluyendo banners del HUD)
+                # Usa zoom_x directamente ya que el Y ha sido ajustado para coincidir con la relación de aspecto
                 zoom_x = self.width_px / (viewport_width_m * scale_px_per_m)
-                zoom_y = self.drawable_height_px / (max_y - min_y) / scale_px_per_m if (max_y - min_y) > 0 else zoom_x
-                # Usa el menor zoom para garantizar que todo cabe. Si el viewport X es explícito, usa zoom_x.
-                final_zoom = zoom_x  # Para viewport explícito X, respetamos el X exacto
+                final_zoom = zoom_x
                 self.viewport.camera.set_zoom(final_zoom)
                 self.lanes_cache_valid = False  # Invalida cache cuando cambia el zoom
 
@@ -1228,8 +1242,8 @@ class Renderer:
                 # Guarda los bounds explícitos del viewport para usar en clipping
                 self.explicit_viewport_x_min = x_min if explicit_viewport_x else None
                 self.explicit_viewport_x_max = x_max if explicit_viewport_x else None
-                self.explicit_viewport_y_min = min_y
-                self.explicit_viewport_y_max = max_y
+                self.explicit_viewport_y_min = min_y if explicit_viewport_y else None
+                self.explicit_viewport_y_max = max_y if explicit_viewport_y else None
 
             else:
                 # Auto-fit: calcula bounding box de todas las calles
@@ -1265,16 +1279,18 @@ class Renderer:
         self.hud.update(snapshot, world)
 
         # Aplica clipping al viewport visible ANTES de dibujar
-        # Esto evita que se vea fuera del rango configurado (especialmente importante con visible_length_m)
-        # Si el viewport X fue explícitamente configurado, úsalo para limitar X.
-        # Para Y, usa siempre los bounds de la cámara para ver toda la altura disponible.
+        # Usa los bounds explícitos si están disponibles, si no usa los de la cámara
         if self.explicit_viewport_x_min is not None and self.explicit_viewport_x_max is not None:
             visible_x_min = self.explicit_viewport_x_min
             visible_x_max = self.explicit_viewport_x_max
-            # Para Y, usa los bounds calculados por la cámara para ver toda la altura
-            _, visible_y_min, _, visible_y_max = self.viewport.camera.get_visible_world_bounds()
         else:
-            visible_x_min, visible_y_min, visible_x_max, visible_y_max = self.viewport.camera.get_visible_world_bounds()
+            visible_x_min, _, visible_x_max, _ = self.viewport.camera.get_visible_world_bounds()
+
+        if self.explicit_viewport_y_min is not None and self.explicit_viewport_y_max is not None:
+            visible_y_min = self.explicit_viewport_y_min
+            visible_y_max = self.explicit_viewport_y_max
+        else:
+            _, visible_y_min, _, visible_y_max = self.viewport.camera.get_visible_world_bounds()
 
         top_left_screen = self.viewport.world_to_screen(Vector2(visible_x_min, visible_y_min))
         bottom_right_screen = self.viewport.world_to_screen(Vector2(visible_x_max, visible_y_max))
@@ -1312,8 +1328,9 @@ class Renderer:
                 # Si hay error, usa la posición original
                 self.draw_agent(agent_id, world_pos, heading, speed_kmh, is_selected, lane_s=s)
 
-        # Dibuja marcadores de distancia cada 100 metros
-        self.draw_distance_markers(snapshot)
+        # Dibuja marcadores de distancia cada 100 metros (solo si está habilitado)
+        if self.camera_config.get('show_distance_markers', False):
+            self.draw_distance_markers(snapshot)
 
         # Dibuja indicador de límite de velocidad
         self.draw_speed_limit_sign(snapshot)
@@ -1324,8 +1341,9 @@ class Renderer:
         # Dibuja obstáculos permanentes
         self.draw_obstacles(snapshot)
 
-        # Dibuja línea de parada (blanca) donde deberían detenerse los vehículos
-        self.draw_stopping_line(snapshot)
+        # Dibuja línea de parada (blanca) donde deberían detenerse los vehículos (solo si hay obstáculos)
+        if snapshot.obstacles:
+            self.draw_stopping_line(snapshot)
 
         # Dibuja límites del viewport visible (para debug, se dibuja al final para no taparse)
         if self.camera_config.get('show_grid', False):

@@ -15,7 +15,7 @@ from kars.simulation.scene_loader import SceneLoader
 from kars.rendering.renderer import Renderer
 
 
-# Mapa de códigos cortos a nombres de escenarios
+# Mapa de códigos cortos a nombres de escenarios (soporta números de múltiples dígitos)
 SCENARIO_SHORTCUTS = {
     '1': 'test_single_car_acceleration',
     '2': 'test_simple_respawn',

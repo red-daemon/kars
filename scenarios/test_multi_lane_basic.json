@@ -1,12 +1,12 @@
 {
-  "name": "Simple Three Roads",
-  "description": "Three parallel roads with one agent per road",
+  "name": "Three Lanes Multi-Lane Test",
+  "description": "Single street with 3 lanes, one agent per lane with individual parameters",
   "road": {
     "roads": [
       {
         "id": "road_0",
-        "name": "Road 0",
-        "speed_limit_kmh": 20.0,
+        "name": "Three-Lane Street",
+        "speed_limit_kmh": 60.0,
         "segments": [
           {
             "id": "segment_0",
@@ -24,61 +24,24 @@
                 "width_m": 3.6,
                 "zone": "urban",
                 "lane_type": "normal",
-                "direction": "forward"
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "road_1",
-        "name": "Road 1",
-        "speed_limit_kmh": 20.0,
-        "segments": [
-          {
-            "id": "segment_1",
-            "start": [
-              0,
-              4
-            ],
-            "end": [
-              200,
-              4
-            ],
-            "lanes": [
+                "direction": "forward",
+                "lane_index": 0
+              },
               {
                 "id": "lane_1",
                 "width_m": 3.6,
                 "zone": "urban",
                 "lane_type": "normal",
-                "direction": "forward"
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "road_2",
-        "name": "Road 2",
-        "speed_limit_kmh": 20.0,
-        "segments": [
-          {
-            "id": "segment_2",
-            "start": [
-              0,
-              8
-            ],
-            "end": [
-              200,
-              8
-            ],
-            "lanes": [
+                "direction": "forward",
+                "lane_index": 1
+              },
               {
                 "id": "lane_2",
                 "width_m": 3.6,
                 "zone": "urban",
                 "lane_type": "normal",
-                "direction": "forward"
+                "direction": "forward",
+                "lane_index": 2
               }
             ]
           }
@@ -95,7 +58,9 @@
       "time_headway_s": 1.5,
       "max_accel_ms2": 2.0,
       "speed_multiplier_mean": 1.0,
-      "speed_multiplier_stddev": 0.05
+      "speed_multiplier_stddev": 0.05,
+      "critical_gap_m": 5.0,
+      "speed_oscillation_range_kmh": 3.0
     },
     {
       "id": 2002,
@@ -104,8 +69,10 @@
       "initial_velocity_ms": 0.0,
       "time_headway_s": 1.5,
       "max_accel_ms2": 2.0,
-      "speed_multiplier_mean": 1.0,
-      "speed_multiplier_stddev": 0.05
+      "speed_multiplier_mean": 1.1,
+      "speed_multiplier_stddev": 0.05,
+      "critical_gap_m": 4.5,
+      "speed_oscillation_range_kmh": 3.5
     },
     {
       "id": 2003,
@@ -114,16 +81,17 @@
       "initial_velocity_ms": 0.0,
       "time_headway_s": 1.5,
       "max_accel_ms2": 2.0,
-      "speed_multiplier_mean": 1.0,
-      "speed_multiplier_stddev": 0.05
+      "speed_multiplier_mean": 0.9,
+      "speed_multiplier_stddev": 0.05,
+      "critical_gap_m": 5.5,
+      "speed_oscillation_range_kmh": 2.5
     }
   ],
   "world": {
     "desired_num_agents": 3
   },
   "camera": {
-    "viewport_x_min": -10,
-    "viewport_x_max": 210,
-    "visible_length_m": 150.0
+    "viewport_x_min_m": 25.0,
+    "viewport_x_max_m": 175.0
   }
 }

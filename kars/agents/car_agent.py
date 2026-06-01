@@ -54,6 +54,15 @@ class CarAgent:
     # Muestreado de distribución Normal. E.g., 0.8 = 80% del límite, 1.2 = 120% del límite
     speed_multiplier: float = 1.0
 
+    # Velocidad media deseada del carro (fija desde spawn, no cambia)
+    # Se calcula como: speed_limit_kmh * speed_multiplier
+    desired_speed_mean_ms: float = config.IDM_DESIRED_SPEED_MS
+
+    # Rango de oscilación de velocidad alrededor de desired_speed_mean (metros/segundo)
+    # Cada tick, la velocidad deseada varía: desired_speed_mean ± random(-speed_oscillation_range, +speed_oscillation_range)
+    # E.g., 1.0 m/s = oscilación de ±1.0 m/s (±3.6 km/h)
+    speed_oscillation_range_ms: float = 0.0
+
     # Gap crítico: distancia umbral en la que comienza frenado máximo (metros)
     # Conductores precavidos: 10m (frenan temprano)
     # Conductores normales: 5m
@@ -301,9 +310,15 @@ class CarAgent:
                 pass  # print(f"[Tick {tick_number}] Agent exited braking mode")
 
         # Caso normal: usar IDM
-        desired_speed_ms = self.idm_behavior.desired_speed
+        # Aplica oscilación de velocidad alrededor de la velocidad media deseada
+        desired_speed_mean_ms = self.desired_speed_mean_ms
+        speed_oscillation_range_ms = self.speed_oscillation_range_ms
 
-        # Actualiza IDM con velocidad deseada del agente
+        # Ruido uniforme: random entre -range y +range
+        speed_noise = random.uniform(-speed_oscillation_range_ms, speed_oscillation_range_ms)
+        desired_speed_ms = desired_speed_mean_ms + speed_noise
+
+        # Actualiza IDM con velocidad deseada del agente (con oscilación aplicada)
         idm_with_tolerance = IDMBehavior(
             desired_speed_ms=desired_speed_ms,
             time_headway_s=self.idm_behavior.time_headway,

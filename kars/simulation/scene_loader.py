@@ -203,6 +203,7 @@ class SceneLoader:
             stop_sign_wait_mean_s = agent_cfg.get('stop_sign_wait_mean_s', 1.0)
             stop_sign_wait_stddev_s = agent_cfg.get('stop_sign_wait_stddev_s', 0.3)
             stop_sign_buffer_m = agent_cfg.get('stop_sign_buffer_m', 0.5)
+            speed_oscillation_range_kmh = agent_cfg.get('speed_oscillation_range_kmh', 0.0)
 
             # Muestrea multiplicador de velocidad desde distribución Normal
             speed_mult_mean = agent_cfg.get('speed_multiplier_mean', 1.0)
@@ -241,6 +242,12 @@ class SceneLoader:
 
             # Calcula y configura velocidad deseada basada en límite de calle
             desired_speed_ms = (lane_speed_limit_kmh * speed_multiplier) / 3.6
+            desired_speed_mean_ms = desired_speed_ms
+            speed_oscillation_range_ms = (speed_oscillation_range_kmh / 3.6) if speed_oscillation_range_kmh > 0 else 0.0
+
+            object.__setattr__(agent, 'desired_speed_mean_ms', desired_speed_mean_ms)
+            object.__setattr__(agent, 'speed_oscillation_range_ms', speed_oscillation_range_ms)
+
             object.__setattr__(
                 agent.idm_behavior,
                 'desired_speed',
@@ -550,8 +557,6 @@ class SceneLoader:
             on_tick_callback = SceneLoader._create_stop_sign_callback()
         elif "collision chain" in name.lower():
             on_tick_callback = SceneLoader._create_collision_chain_callback()
-        elif "multi" in name.lower() or "lane" in name.lower():
-            on_tick_callback = SceneLoader._create_multi_lane_callback()
         elif "obstacle" in name.lower() or "avoidance" in description.lower():
             on_tick_callback = SceneLoader._create_obstacle_avoidance_callback()
         else:
