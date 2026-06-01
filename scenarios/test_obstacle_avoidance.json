@@ -1,15 +1,34 @@
 {
   "name": "Obstacle Avoidance Test",
-  "description": "Carro acelerando hacia obstáculo parado - prueba frenado gradual sin choque",
+  "description": "Carro acelerando hacia obst\u00c3\u00a1culo parado - prueba frenado gradual sin choque",
   "road": {
-    "lanes": [
+    "roads": [
       {
-        "id": "lane_0",
-        "start": [-20, 0],
-        "end": [170, 0],
-        "width_m": 2.7,
+        "id": "road_0",
+        "name": "Road 0",
         "speed_limit_kmh": 40.0,
-        "zone": "urban"
+        "segments": [
+          {
+            "id": "segment_0",
+            "start": [
+              -20,
+              0
+            ],
+            "end": [
+              170,
+              0
+            ],
+            "lanes": [
+              {
+                "id": "lane_0",
+                "width_m": 3.6,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward"
+              }
+            ]
+          }
+        ]
       }
     ]
   },
@@ -30,7 +49,6 @@
     "allow_spawning": false
   },
   "camera": {
-    "viewport_x_min_m": 0.0,
-    "viewport_x_max_m": 150.0
+    "visible_length_m": 150.0
   }
 }

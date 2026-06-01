@@ -67,6 +67,12 @@ class Renderer:
         self.reset_requested = False
         self.camera_config = camera_config or {}
 
+        # Bounds explícitos del viewport (si se especifican en la configuración)
+        self.explicit_viewport_x_min = None
+        self.explicit_viewport_x_max = None
+        self.explicit_viewport_y_min = None
+        self.explicit_viewport_y_max = None
+
     def _build_segments_cache(self, snapshot: RenderSnapshot) -> pygame.Surface:
         """Construye una surface con todos los segmentos dibujados como calles unificadas.
 
@@ -534,6 +540,40 @@ class Renderer:
             font = pygame.font.Font(None, 14)
             text = font.render("STOP", True, line_color)
             self.screen.blit(text, (int(screen_x) - 15, int(screen_y) + size + 5))
+
+    def draw_grid(self) -> None:
+        """Dibuja malla de calibración cada 10m con etiquetas de coordenadas mundo.
+
+        Usado para verificación visual de coordenadas mundo. Con SCALE_PX_PER_M=10
+        y zoom=1.0, cada celda de la malla mide 100x100px = 10m.
+        """
+        grid_m = 10.0
+        vis_x_min, vis_y_min, vis_x_max, vis_y_max = self.viewport.camera.get_visible_world_bounds()
+        font = pygame.font.Font(None, 18)
+
+        # Líneas verticales (cada 10m en X)
+        x = math.floor(vis_x_min / grid_m) * grid_m
+        while x <= vis_x_max + 0.01:
+            sx, _ = self.viewport.world_to_screen(Vector2(x, 0))
+            # Origen (0m) en rojo, otras en gris
+            color = (200, 50, 50) if abs(x) < 0.01 else (70, 70, 70)
+            pygame.draw.line(self.screen, color, (int(sx), 0), (int(sx), self.height_px), 1)
+            # Etiqueta con coordenada mundo
+            label = font.render(f"{int(x)}m", True, (160, 160, 160))
+            self.screen.blit(label, (int(sx) + 2, 4))
+            x += grid_m
+
+        # Líneas horizontales (cada 10m en Y)
+        y = math.floor(vis_y_min / grid_m) * grid_m
+        while y <= vis_y_max + 0.01:
+            _, sy = self.viewport.world_to_screen(Vector2(0, y))
+            # Origen (0m) en rojo, otras en gris
+            color = (200, 50, 50) if abs(y) < 0.01 else (70, 70, 70)
+            pygame.draw.line(self.screen, color, (0, int(sy)), (self.width_px, int(sy)), 1)
+            # Etiqueta con coordenada mundo
+            label = font.render(f"{int(y)}m", True, (160, 160, 160))
+            self.screen.blit(label, (4, int(sy) + 2))
+            y += grid_m
 
     def draw_distance_markers(self, snapshot: RenderSnapshot) -> None:
         """Dibuja marcadores cada 100 metros a lo largo del carril.
@@ -1072,6 +1112,7 @@ class Renderer:
             # Determina viewport: visible_length_m o viewport_x_min/max
             x_min = None
             x_max = None
+            explicit_viewport_x = False  # Marca si el viewport X fue explícitamente configurado
 
             if 'visible_length_m' in self.camera_config:
                 # Nueva estructura: visible_length_m define cuánto ver en pantalla (0 a visible_length)
@@ -1079,10 +1120,12 @@ class Renderer:
                 visible_length = self.camera_config['visible_length_m']
                 x_min = 0  # La pantalla muestra desde 0m
                 x_max = visible_length  # Hasta visible_length_m
+                explicit_viewport_x = True
             elif 'viewport_x_min_m' in self.camera_config and 'viewport_x_max_m' in self.camera_config:
                 # Formato antiguo: viewport_x_min/max (compatibilidad)
                 x_min = self.camera_config['viewport_x_min_m']
                 x_max = self.camera_config['viewport_x_max_m']
+                explicit_viewport_x = True
 
             # Si se definió viewport, úsalo
             if x_min is not None and x_max is not None:
@@ -1105,15 +1148,22 @@ class Renderer:
                 scale_px_per_m = config.SCALE_PX_PER_M
 
                 # IMPORTANTE: Cuando el viewport se especifica explícitamente (visible_length_m o viewport_x_min/max),
-                # debemos respetar el ancho exactamente. El zoom DEBE ser tal que viewport_width_m cabe exactamente en width_px.
+                # debemos respetar el ancho exactamente. El zoom DEBE ser tal que viewport_width_m caba exactamente en width_px.
                 # No usamos min(zoom_x, zoom_y) porque eso permitiría que el zoom_y reduzca y se viera más ancho.
                 zoom_x = self.width_px / (viewport_width_m * scale_px_per_m)
                 self.viewport.camera.set_zoom(zoom_x)
+                self.lanes_cache_valid = False  # Invalida cache cuando cambia el zoom
 
                 # Centra en el viewport configurado
                 center_x = (x_min + x_max) / 2.0
                 center_y = (min_y + max_y) / 2.0 if max_y != float('-inf') else 0.0
                 self.viewport.camera.center_on(Vector2(center_x, center_y))
+
+                # Guarda los bounds explícitos del viewport para usar en clipping
+                self.explicit_viewport_x_min = x_min if explicit_viewport_x else None
+                self.explicit_viewport_x_max = x_max if explicit_viewport_x else None
+                self.explicit_viewport_y_min = min_y
+                self.explicit_viewport_y_max = max_y
 
             else:
                 # Auto-fit: calcula bounding box de todas las calles
@@ -1136,6 +1186,7 @@ class Renderer:
                 zoom_y = self.height_px / (lane_height_m * scale_px_per_m)
                 required_zoom = min(zoom_x, zoom_y)
                 self.viewport.camera.set_zoom(required_zoom)
+                self.lanes_cache_valid = False  # Invalida cache cuando cambia el zoom
 
                 # Centra en el medio del bounding box
                 center_x = (min_x + max_x) / 2.0
@@ -1149,7 +1200,16 @@ class Renderer:
 
         # Aplica clipping al viewport visible ANTES de dibujar
         # Esto evita que se vea fuera del rango configurado (especialmente importante con visible_length_m)
-        visible_x_min, visible_y_min, visible_x_max, visible_y_max = self.viewport.camera.get_visible_world_bounds()
+        # Si el viewport X fue explícitamente configurado, úsalo para limitar X.
+        # Para Y, usa siempre los bounds de la cámara para ver toda la altura disponible.
+        if self.explicit_viewport_x_min is not None and self.explicit_viewport_x_max is not None:
+            visible_x_min = self.explicit_viewport_x_min
+            visible_x_max = self.explicit_viewport_x_max
+            # Para Y, usa los bounds calculados por la cámara para ver toda la altura
+            _, visible_y_min, _, visible_y_max = self.viewport.camera.get_visible_world_bounds()
+        else:
+            visible_x_min, visible_y_min, visible_x_max, visible_y_max = self.viewport.camera.get_visible_world_bounds()
+
         top_left_screen = self.viewport.world_to_screen(Vector2(visible_x_min, visible_y_min))
         bottom_right_screen = self.viewport.world_to_screen(Vector2(visible_x_max, visible_y_max))
 
@@ -1163,6 +1223,10 @@ class Renderer:
 
         # Dibuja escena (ya con clipping aplicado)
         self.screen.fill(config.BACKGROUND_COLOR)
+
+        # Dibuja malla de calibración si está configurada en camera_config
+        if self.camera_config.get('show_grid', False):
+            self.draw_grid()
 
         # Dibuja lanes (cache)
         self.draw_lane_cached(snapshot)

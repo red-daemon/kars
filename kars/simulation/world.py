@@ -28,8 +28,12 @@ class RenderSnapshot:
     # Estado de agentes
     agents: List[tuple] = field(default_factory=list)  # (id, world_pos, heading, speed_kmh, lane_id, s)
 
-    # Entorno
-    lanes: List[tuple] = field(default_factory=list)  # (lane_id, waypoints)
+    # Entorno - Segmentos (multi-carril)
+    segments: List[dict] = field(default_factory=list)  # [{segment_id, lane_ids, total_width_m, waypoints, speed_limit_kmh}, ...]
+
+    # Entorno - Carriles individuales (mantenido para compatibilidad/debugging)
+    lanes: List[tuple] = field(default_factory=list)  # (lane_id, waypoints, width_m)
+
     obstacles: List[tuple] = field(default_factory=list)  # (world_pos, lane_id, s) para obstáculos permanentes
 
     # Tiempo simulado
@@ -51,7 +55,7 @@ class World:
     - Produce snapshots para render
     """
 
-    def __init__(self, network: RoadNetwork, allow_spawning: bool = False, on_tick_callback=None, desired_num_agents: int = None):
+    def __init__(self, network: RoadNetwork, allow_spawning: bool = False, on_tick_callback=None, desired_num_agents: int = None, removal_x_max: float = None):
         """Inicializa World.
 
         Args:
@@ -59,12 +63,14 @@ class World:
             allow_spawning: Si True, auto-spawn de vehículos. Si False, solo manual via mouse.
             on_tick_callback: Callback(world, tick_number) para eventos customizados cada tick.
             desired_num_agents: Número deseado de agentes para mantenimiento automático. Si None, no mantiene.
+            removal_x_max: Coordenada X máxima para remover agentes (respawn). Si None, usa final del carril.
         """
         self.network = network
         self.agents: Dict[int, CarAgent] = {}
         self._agent_id_counter = config.AGENT_ID_COUNTER_START
         self.allow_spawning = allow_spawning
         self.on_tick_callback = on_tick_callback
+        self.removal_x_max = removal_x_max
 
         # Mantenimiento de población
         self.desired_num_agents = desired_num_agents
@@ -478,13 +484,18 @@ class World:
                 # Usa coordenadas mundo (x) para detectar agentes que han salido completamente
                 # en lugar de new_s que está acotado por lane.find_closest_s()
                 agent_x = agent.kinematic_state.position.x
-                lane_end_x = lane.waypoints[-1].position.x
+
+                # Determina límite de remover: usa removal_x_max si está configurado, si no usa final del carril
+                if self.removal_x_max is not None:
+                    removal_limit_x = self.removal_x_max
+                else:
+                    removal_limit_x = lane.waypoints[-1].position.x
 
                 # Buffer pequeño para estar seguro (equivalente a un car length)
                 removal_buffer_m = config.CAR_LENGTH_M
 
-                # Elimina cuando el agente ha pasado completamente el final del carril
-                if agent_x > lane_end_x + removal_buffer_m:
+                # Elimina cuando el agente ha pasado completamente el límite
+                if agent_x > removal_limit_x + removal_buffer_m:
                     agents_to_remove.append(agent.agent_id)
                     continue
 
@@ -579,7 +590,21 @@ class World:
                 agent.position_along_lane_s,
             ))
 
-        # Carriles (solo los waypoints para dibujar)
+        # Segmentos (multi-carril) - agrupa carriles por segmento
+        segment_data = []
+        for segment_id, segment in self.network.segments.items():
+            lane_ids = [lane.lane_id for lane in segment.lanes]
+            waypoints_list = [(wp.position.x, wp.position.y) for wp in segment.lanes[0].waypoints]
+            segment_info = {
+                'segment_id': segment_id,
+                'lane_ids': lane_ids,
+                'total_width_m': segment.total_width_m(),
+                'waypoints': waypoints_list,
+                'speed_limit_kmh': segment.get_speed_limit_kmh(),
+            }
+            segment_data.append(segment_info)
+
+        # Carriles individuales (para compatibilidad y debugging)
         lane_data = []
         for lane in self.network.get_all_lanes():
             waypoints_list = [(wp.position.x, wp.position.y) for wp in lane.waypoints]
@@ -601,6 +626,7 @@ class World:
 
         snapshot = RenderSnapshot(
             agents=agent_data,
+            segments=segment_data,
             lanes=lane_data,
             obstacles=obstacle_data,
             sim_time_s=self.sim_time_s,

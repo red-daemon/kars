@@ -1,0 +1,15 @@
+{
+  "name": "Grid Calibration",
+  "description": "Fondo vacío con malla cada 10m. Zoom neutro: 10px = 1m, 100px = 10m. Verificación de coordenadas mundo.",
+  "road": {
+    "roads": []
+  },
+  "agents": [],
+  "world": {
+    "allow_spawning": false,
+    "desired_num_agents": 0
+  },
+  "camera": {
+    "show_grid": true
+  }
+}

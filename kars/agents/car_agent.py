@@ -278,10 +278,10 @@ class CarAgent:
                 agent_center_s = self.position_along_lane_s
                 overshoot = agent_center_s - stop_line_s
 
-                print(f"[Tick {tick_number}] Agent {self.agent_id}: {old_mode} → {current_braking_mode} | "
-                      f"Modo duró {time_in_mode_s:.3f}s, a_prom={avg_accel:.2f}m/s² | "
+                print(f"[Tick {tick_number}] Agent {self.agent_id}: {old_mode} -> {current_braking_mode} | "
+                      f"Modo duro {time_in_mode_s:.3f}s, a_prom={avg_accel:.2f}m/s2 | "
                       f"gap_rear={perception.leader_distance_m:.2f}m, center-to-center={gap_center_to_center:.2f}m, "
-                      f"speed={current_speed*3.6:.1f}km/h, a_actual={accel:.2f}m/s² | "
+                      f"speed={current_speed*3.6:.1f}km/h, a_actual={accel:.2f}m/s2 | "
                       f"STOP LINE at {stop_line_s:.2f}m, agent center at {agent_center_s:.2f}m, overshoot={overshoot:+.2f}m")
 
             return accel
@@ -298,10 +298,7 @@ class CarAgent:
                 object.__setattr__(self, '_last_mode_tick', tick_number)
                 object.__setattr__(self, '_last_mode_speed_ms', current_speed)
 
-                print(f"[Tick {tick_number}] Agent {self.agent_id}: {old_mode} → none | "
-                      f"Modo duró {time_in_mode_s:.3f}s, a_prom={avg_accel:.2f}m/s² | "
-                      f"gap_rear={perception.leader_distance_m:.2f}m, center-to-center={gap_center_to_center:.2f}m, "
-                      f"speed={current_speed*3.6:.1f}km/h")
+                pass  # print(f"[Tick {tick_number}] Agent exited braking mode")
 
         # Caso normal: usar IDM
         desired_speed_ms = self.idm_behavior.desired_speed

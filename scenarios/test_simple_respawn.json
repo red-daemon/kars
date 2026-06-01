@@ -6,16 +6,16 @@
       {
         "id": "road_0",
         "name": "Road 0",
-        "speed_limit_kmh": 60.0,
+        "speed_limit_kmh": 30.0,
         "segments": [
           {
             "id": "segment_0",
             "start": [
-              0,
+              -20,
               0
             ],
             "end": [
-              150,
+              120,
               0
             ],
             "lanes": [
@@ -36,7 +36,7 @@
     {
       "id": 1001,
       "lane": "lane_0",
-      "position_s": 10.0,
+      "position_s": -10.0,
       "initial_velocity_ms": 0.0,
       "speed_multiplier_mean": 1.0,
       "speed_multiplier_stddev": 0.05,
@@ -50,6 +50,7 @@
     "desired_num_agents": 1
   },
   "camera": {
-    "visible_length_m": 150.0
+    "viewport_x_min_m": 0.0,
+    "viewport_x_max_m": 100.0
   }
 }

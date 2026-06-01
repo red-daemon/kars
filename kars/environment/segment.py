@@ -22,9 +22,17 @@ class RoadSegment:
     end_pos_m: Vector2
 
     def __post_init__(self):
-        """Valida que haya al menos 1 carril."""
+        """Valida que haya al menos 1 carril y que estén ordenados por lane_index."""
         if not self.lanes:
             raise ValueError(f"RoadSegment {self.segment_id}: necesita al menos 1 carril")
+
+        # Verifica que lanes estén ordenadas por lane_index de forma secuencial
+        lane_indices = [lane.lane_index for lane in self.lanes]
+        if lane_indices != list(range(len(self.lanes))):
+            raise ValueError(
+                f"RoadSegment {self.segment_id}: lanes no están ordenadas secuencialmente. "
+                f"Indices encontrados: {lane_indices}, esperado: {list(range(len(self.lanes)))}"
+            )
 
     def get_lane(self, lane_index: int) -> Lane:
         """Retorna el lane en índice dado.
@@ -60,3 +68,21 @@ class RoadSegment:
     def num_lanes(self) -> int:
         """Número de carriles en este segmento."""
         return len(self.lanes)
+
+    def total_width_m(self) -> float:
+        """Ancho total del segmento (suma de anchos de todos los carriles).
+
+        Returns:
+            float: Ancho total en metros
+        """
+        return sum(lane.width_m for lane in self.lanes)
+
+    def get_speed_limit_kmh(self) -> float:
+        """Límite de velocidad del segmento (del primer carril).
+
+        Todos los carriles de un segment deben tener el mismo límite.
+
+        Returns:
+            float: Límite de velocidad en km/h
+        """
+        return self.lanes[0].speed_limit_kmh if self.lanes else 0.0

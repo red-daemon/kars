@@ -1,0 +1,48 @@
+{
+  "name": "Width Calibration Test",
+  "description": "Obstaculos permanentes cada 10m para verificar que el ancho de la calle coincide con la realidad.",
+  "road": {
+    "roads": [
+      {
+        "id": "road_0",
+        "name": "Road 0",
+        "speed_limit_kmh": 60.0,
+        "segments": [
+          {
+            "id": "segment_0",
+            "start": [
+              0,
+              0
+            ],
+            "end": [
+              20,
+              0
+            ],
+            "lanes": [
+              {
+                "id": "lane_0",
+                "width_m": 3.6,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "agents": [
+    {"id": 1001, "lane": "lane_0", "position_s": 2.25, "initial_velocity_ms": 0.0, "speed_multiplier_mean": 1.0, "speed_multiplier_stddev": 0.0, "time_headway_s": 1.5, "max_accel_ms2": 2.0, "critical_gap_m": 0.0},
+    {"id": 1002, "lane": "lane_0", "position_s": 6.75, "initial_velocity_ms": 0.0, "speed_multiplier_mean": 1.0, "speed_multiplier_stddev": 0.0, "time_headway_s": 1.5, "max_accel_ms2": 2.0, "critical_gap_m": 0.0},
+    {"id": 1003, "lane": "lane_0", "position_s": 11.25, "initial_velocity_ms": 0.0, "speed_multiplier_mean": 1.0, "speed_multiplier_stddev": 0.0, "time_headway_s": 1.5, "max_accel_ms2": 2.0, "critical_gap_m": 0.0},
+    {"id": 1004, "lane": "lane_0", "position_s": 15.75, "initial_velocity_ms": 0.0, "speed_multiplier_mean": 1.0, "speed_multiplier_stddev": 0.0, "time_headway_s": 1.5, "max_accel_ms2": 2.0, "critical_gap_m": 0.0}
+  ],
+  "world": {
+    "allow_spawning": false,
+    "desired_num_agents": 4
+  },
+  "camera": {
+    "visible_length_m": 20.0
+  }
+}

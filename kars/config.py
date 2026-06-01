@@ -21,30 +21,31 @@ RENDER_TARGET_FPS = 30
 RENDER_SKIP_FRAMES = 1  # Renderiza cada N ticks
 
 # ============================================================================
-# ESCALA FÍSICA: metros ↔ píxeles (ESCALA 2x: 40px por carro)
+# ESCALA FÍSICA: metros ↔ píxeles
 # ============================================================================
-# Dimensiones reales y del sprite para calibración
+# 10 px/m → 1px = 10cm = 0.1m → 10px = 1m → 100px = 10m (zoom neutro ideal para calibración)
+SCALE_PX_PER_M = 10.0
+
+# Dimensiones reales del carro
 CAR_LENGTH_M = 4.5
 CAR_WIDTH_M = 1.8
-CAR_SPRITE_LENGTH_PX = 20  # Reducido para que quepan en el carril
-CAR_SPRITE_WIDTH_PX = 10   # Reducido para que quepan en el carril
 
-# Escala original (para referencia): 40px / 4.5m ≈ 8.89 px/m
-# SCALE_PX_PER_M_ORIGINAL = CAR_SPRITE_LENGTH_PX / CAR_LENGTH_M
+# Tamaño del sprite basado en dimensiones reales y escala
+# El carro se dibuja proporcionalmente al carril (1.8m de ancho)
+# Mantiene aspect ratio 2:1 (largo:ancho)
+CAR_SPRITE_WIDTH_PX = int(CAR_WIDTH_M * SCALE_PX_PER_M)    # 1.8m * 3.0 = 5.4 ≈ 5px
+CAR_SPRITE_LENGTH_PX = CAR_SPRITE_WIDTH_PX * 2              # Mantiene proporción 2:1 = 10px
 
-# Escala elegida tras tests (3.0 px/m es óptima para visualización)
-SCALE_PX_PER_M = 3.0
-
-# Ancho del carril (gris de carretera): 4.0m para simetría con escala 7.5 px/m
-# 4.0m * 7.5 px/m = 30 px (par)
-LANE_WIDTH_M = 4.0
+# Ancho del carril: 3.6m
+# Carro: 1.8m, carril: 3.6m, diferencia: 1.8m a cada lado
+LANE_WIDTH_M = 3.6
 
 # Franja blanca: 0.2m para simetría
-# 0.2m * 7.5 px/m = 1.5 px ≈ 2 px
+# 0.2m * 3.0 px/m = 0.6px (visible en pantalla)
 LANE_MARKING_WIDTH_M = 0.2
 
-# Margen verde exterior: 0.8m a cada lado (8 decímetros)
-# 0.8m * 7.5 px/m = 6 px (par)
+# Margen gris exterior (parte de la calle): 0.8m a cada lado
+# Los márgenes son GRISES, no verdes. El fondo verde está fuera de la calle.
 ROAD_MARGIN_WIDTH_M = 0.8
 
 # ============================================================================
