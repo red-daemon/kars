@@ -12,11 +12,18 @@ class Camera:
         window_width_px: int = config.WINDOW_WIDTH_PX,
         window_height_px: int = config.WINDOW_HEIGHT_PX,
         scale_px_per_m: float = config.SCALE_PX_PER_M,
+        drawable_top_y_px: int = 0,
+        drawable_height_px: int = None,
     ):
         """Inicializa cámara."""
         self.window_width_px = window_width_px
         self.window_height_px = window_height_px
         self.base_scale = scale_px_per_m
+
+        # Espacio dibujable (excluye banners del HUD)
+        self.drawable_top_y_px = drawable_top_y_px
+        self.drawable_height_px = drawable_height_px if drawable_height_px is not None else window_height_px
+        self.drawable_center_y_px = self.drawable_top_y_px + self.drawable_height_px / 2.0
 
         # Estado del viewport
         self.zoom = 1.0
@@ -34,7 +41,7 @@ class Camera:
         rel_y = world_pos_m.y - self.offset_y_m
 
         screen_x = rel_x * self.scale_px_per_m + self.window_width_px / 2.0
-        screen_y = rel_y * self.scale_px_per_m + self.window_height_px / 2.0
+        screen_y = rel_y * self.scale_px_per_m + self.drawable_center_y_px
 
         return (screen_x, screen_y)
 
@@ -43,7 +50,7 @@ class Camera:
         screen_x, screen_y = screen_pos_px
 
         rel_x = (screen_x - self.window_width_px / 2.0) / self.scale_px_per_m
-        rel_y = (screen_y - self.window_height_px / 2.0) / self.scale_px_per_m
+        rel_y = (screen_y - self.drawable_center_y_px) / self.scale_px_per_m
 
         world_x = rel_x + self.offset_x_m
         world_y = rel_y + self.offset_y_m
@@ -66,7 +73,7 @@ class Camera:
 
     def get_visible_world_bounds(self) -> tuple:
         """Obtiene límites (min_x, min_y, max_x, max_y) visibles en el mundo."""
-        top_left = self.screen_to_world((0, 0))
-        bottom_right = self.screen_to_world((self.window_width_px, self.window_height_px))
+        top_left = self.screen_to_world((0, self.drawable_top_y_px))
+        bottom_right = self.screen_to_world((self.window_width_px, self.drawable_top_y_px + self.drawable_height_px))
 
         return (top_left.x, top_left.y, bottom_right.x, bottom_right.y)

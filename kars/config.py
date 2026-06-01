@@ -125,9 +125,10 @@ FPS_DISPLAY = True
 DEBUG_OVERLAY_ENABLED = True
 
 # HUD layout dimensions
+HUD_TOP_HEIGHT = 120      # Altura del banner de información (arriba)
 HUD_CHART_W = 200
 HUD_CHART_H = 80
-HUD_BAR_HEIGHT = 55  # Altura de la barra de controles (bottom)
+HUD_BAR_HEIGHT = 55       # Altura de la barra de controles (bottom)
 
 COLOR_CAR_DEFAULT = (200, 50, 50)    # Rojo oscuro
 COLOR_CAR_LEADER = (200, 100, 100)

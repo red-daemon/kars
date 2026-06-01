@@ -40,13 +40,24 @@ class Renderer:
         self.width_px = width_px
         self.height_px = height_px
         self.screen = pygame.display.set_mode((width_px, height_px))
+
+        # Espacio dibujable real (excluyendo banners del HUD)
+        self.drawable_top_y = config.HUD_TOP_HEIGHT
+        self.drawable_height_px = height_px - config.HUD_TOP_HEIGHT - config.HUD_BAR_HEIGHT
+        self.drawable_center_y_px = self.drawable_top_y + self.drawable_height_px / 2.0
         pygame.display.set_caption("KARS: Interactive Traffic Simulator")
 
         self.clock = pygame.time.Clock()
 
         # Viewport manager
         from kars.rendering.camera import Camera
-        camera = Camera(width_px, height_px)
+        camera = Camera(
+            width_px,
+            height_px,
+            config.SCALE_PX_PER_M,
+            drawable_top_y_px=config.HUD_TOP_HEIGHT,
+            drawable_height_px=height_px - config.HUD_TOP_HEIGHT - config.HUD_BAR_HEIGHT
+        )
         self.viewport = ViewportManager(camera)
 
         # HUD
@@ -541,6 +552,66 @@ class Renderer:
             text = font.render("STOP", True, line_color)
             self.screen.blit(text, (int(screen_x) - 15, int(screen_y) + size + 5))
 
+    def draw_mouse_coords(self) -> None:
+        """Dibuja las coordenadas del mouse en pantalla (ambas en píxeles y mundo)."""
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        world_pos = self.viewport.screen_to_world((mouse_x, mouse_y))
+
+        font = pygame.font.Font(None, 16)
+        text_lines = [
+            f"Screen: ({mouse_x}, {mouse_y})",
+            f"World: ({world_pos.x:.1f}m, {world_pos.y:.1f}m)"
+        ]
+
+        # Dibuja en el centro de la pantalla
+        y_offset = self.height_px // 2 - 20
+        x_offset = self.width_px // 2 - 100
+
+        for line in text_lines:
+            text = font.render(line, True, (0, 255, 0), (0, 0, 0))
+            self.screen.blit(text, (x_offset, y_offset))
+            y_offset += 20
+
+    def draw_viewport_bounds(self) -> None:
+        """Dibuja un rectángulo en los bordes del viewport visible (coordenadas mundo).
+
+        Útil para debug: muestra exactamente dónde empieza y termina el área visible.
+        Con zoom=1.0 y SCALE_PX_PER_M=10, los bordes deben estar en (0,0) a (1200,800).
+        """
+        vis_x_min, vis_y_min, vis_x_max, vis_y_max = self.viewport.camera.get_visible_world_bounds()
+
+        top_left = self.viewport.world_to_screen(Vector2(vis_x_min, vis_y_min))
+        top_right = self.viewport.world_to_screen(Vector2(vis_x_max, vis_y_min))
+        bottom_left = self.viewport.world_to_screen(Vector2(vis_x_min, vis_y_max))
+        bottom_right = self.viewport.world_to_screen(Vector2(vis_x_max, vis_y_max))
+
+        # Dibuja rectángulo magenta (3px grosor) en los bordes
+        # Expande ligeramente para asegurar que las líneas horizontales sean visibles
+        color = (255, 0, 255)
+        x = int(top_left[0])
+        y = int(top_left[1]) - 70  # Sube un poco la de arriba
+        width = int(top_right[0]) - int(top_left[0])
+        height = int(bottom_left[1]) - int(top_left[1]) + 100  # Expande abajo también
+        rect = pygame.Rect(x, y, width, height)
+        pygame.draw.rect(self.screen, color, rect, 1)
+
+        # Etiquetas en las 4 esquinas (mostrando coordenadas mundo)
+        # Las etiquetas se dibujan con fondo oscuro para que sean visibles
+        font = pygame.font.Font(None, 12)
+        bg_color = (0, 0, 0)
+        text_color = (255, 0, 255)
+
+        label_tl = font.render(f"({vis_x_min:.0f}, {vis_y_min:.0f})", True, text_color, bg_color)
+        label_tr = font.render(f"({vis_x_max:.0f}, {vis_y_min:.0f})", True, text_color, bg_color)
+        label_bl = font.render(f"({vis_x_min:.0f}, {vis_y_max:.0f})", True, text_color, bg_color)
+        label_br = font.render(f"({vis_x_max:.0f}, {vis_y_max:.0f})", True, text_color, bg_color)
+
+        # Posiciona adentro del rect para que siempre sean visibles
+        self.screen.blit(label_tl, (int(top_left[0]) + 3, int(top_left[1]) + 3))
+        self.screen.blit(label_tr, (int(top_right[0]) - label_tr.get_width() - 3, int(top_right[1]) + 3))
+        self.screen.blit(label_bl, (int(bottom_left[0]) + 3, int(bottom_left[1]) - label_bl.get_height() - 3))
+        self.screen.blit(label_br, (int(bottom_right[0]) - label_br.get_width() - 3, int(bottom_right[1]) - label_br.get_height() - 3))
+
     def draw_grid(self) -> None:
         """Dibuja malla de calibración cada 10m con etiquetas de coordenadas mundo.
 
@@ -549,30 +620,34 @@ class Renderer:
         """
         grid_m = 10.0
         vis_x_min, vis_y_min, vis_x_max, vis_y_max = self.viewport.camera.get_visible_world_bounds()
-        font = pygame.font.Font(None, 18)
+        font = pygame.font.Font(None, 16)
 
         # Líneas verticales (cada 10m en X)
         x = math.floor(vis_x_min / grid_m) * grid_m
         while x <= vis_x_max + 0.01:
             sx, _ = self.viewport.world_to_screen(Vector2(x, 0))
-            # Origen (0m) en rojo, otras en gris
-            color = (200, 50, 50) if abs(x) < 0.01 else (70, 70, 70)
-            pygame.draw.line(self.screen, color, (int(sx), 0), (int(sx), self.height_px), 1)
-            # Etiqueta con coordenada mundo
-            label = font.render(f"{int(x)}m", True, (160, 160, 160))
-            self.screen.blit(label, (int(sx) + 2, 4))
+            sx_int = int(sx)
+            # Origen (0m) en rojo, otras en blanco
+            color = (255, 0, 0) if abs(x) < 0.01 else (255, 255, 255)
+            pygame.draw.line(self.screen, color, (sx_int, 0), (sx_int, self.height_px), 1)
+            # Etiqueta con coordenada mundo (arriba, solo si está dentro de pantalla)
+            if 0 <= sx_int < self.width_px:
+                label = font.render(f"{int(x)}m", True, (255, 255, 100))
+                self.screen.blit(label, (sx_int - 12, 5))
             x += grid_m
 
         # Líneas horizontales (cada 10m en Y)
         y = math.floor(vis_y_min / grid_m) * grid_m
         while y <= vis_y_max + 0.01:
             _, sy = self.viewport.world_to_screen(Vector2(0, y))
-            # Origen (0m) en rojo, otras en gris
-            color = (200, 50, 50) if abs(y) < 0.01 else (70, 70, 70)
-            pygame.draw.line(self.screen, color, (0, int(sy)), (self.width_px, int(sy)), 1)
-            # Etiqueta con coordenada mundo
-            label = font.render(f"{int(y)}m", True, (160, 160, 160))
-            self.screen.blit(label, (4, int(sy) + 2))
+            sy_int = int(sy)
+            # Origen (0m) en rojo, otras en blanco
+            color = (255, 0, 0) if abs(y) < 0.01 else (255, 255, 255)
+            pygame.draw.line(self.screen, color, (0, sy_int), (self.width_px, sy_int), 1)
+            # Etiqueta con coordenada mundo (izquierda, solo si está dentro de pantalla)
+            if 0 <= sy_int < self.height_px:
+                label = font.render(f"{int(y)}m", True, (255, 255, 100))
+                self.screen.blit(label, (5, sy_int - 8))
             y += grid_m
 
     def draw_distance_markers(self, snapshot: RenderSnapshot) -> None:
@@ -853,6 +928,10 @@ class Renderer:
         Args:
             snapshot: RenderSnapshot con información de segmentos
         """
+        # Si no hay segmentos ni lanes, no dibuja nada (ej: escenarios de calibración)
+        if not snapshot.segments and not snapshot.lanes:
+            return
+
         if not self.lanes_cache_valid or self.lanes_cache_surface is None:
             # Usa segmentos (multi-carril) si están disponibles, si no usa lanes
             if snapshot.segments:
@@ -861,7 +940,8 @@ class Renderer:
                 self.lanes_cache_surface = self._build_lanes_cache(snapshot)
             self.lanes_cache_valid = True
 
-        self.screen.blit(self.lanes_cache_surface, (0, 0))
+        if self.lanes_cache_surface is not None:
+            self.screen.blit(self.lanes_cache_surface, (0, 0))
 
     def draw_agent(self, agent_id: int, world_pos: Vector2, heading: float,
                    speed_kmh: float, selected: bool = False, lane_s: float = None) -> None:
@@ -1150,11 +1230,16 @@ class Renderer:
                 # IMPORTANTE: Cuando el viewport se especifica explícitamente (visible_length_m o viewport_x_min/max),
                 # debemos respetar el ancho exactamente. El zoom DEBE ser tal que viewport_width_m caba exactamente en width_px.
                 # No usamos min(zoom_x, zoom_y) porque eso permitiría que el zoom_y reduzca y se viera más ancho.
+                # Usa el espacio dibujable real (excluyendo banners del HUD)
                 zoom_x = self.width_px / (viewport_width_m * scale_px_per_m)
-                self.viewport.camera.set_zoom(zoom_x)
+                zoom_y = self.drawable_height_px / (max_y - min_y) / scale_px_per_m if (max_y - min_y) > 0 else zoom_x
+                # Usa el menor zoom para garantizar que todo cabe. Si el viewport X es explícito, usa zoom_x.
+                final_zoom = zoom_x  # Para viewport explícito X, respetamos el X exacto
+                self.viewport.camera.set_zoom(final_zoom)
                 self.lanes_cache_valid = False  # Invalida cache cuando cambia el zoom
 
                 # Centra en el viewport configurado
+                # El centro X es en coordenadas mundo, el centro Y también (la cámara maneja la traducción a pantalla)
                 center_x = (x_min + x_max) / 2.0
                 center_y = (min_y + max_y) / 2.0 if max_y != float('-inf') else 0.0
                 self.viewport.camera.center_on(Vector2(center_x, center_y))
@@ -1180,10 +1265,10 @@ class Renderer:
                 lane_length_m = max_x - min_x
                 lane_height_m = max_y - min_y
 
-                # Calcula zoom para que todo quepa en pantalla
+                # Calcula zoom para que todo quepa en el espacio dibujable (sin banners del HUD)
                 scale_px_per_m = config.SCALE_PX_PER_M
                 zoom_x = self.width_px / (lane_length_m * scale_px_per_m)
-                zoom_y = self.height_px / (lane_height_m * scale_px_per_m)
+                zoom_y = self.drawable_height_px / (lane_height_m * scale_px_per_m)
                 required_zoom = min(zoom_x, zoom_y)
                 self.viewport.camera.set_zoom(required_zoom)
                 self.lanes_cache_valid = False  # Invalida cache cuando cambia el zoom
@@ -1261,8 +1346,16 @@ class Renderer:
         # Dibuja línea de parada (blanca) donde deberían detenerse los vehículos
         self.draw_stopping_line(snapshot)
 
+        # Dibuja límites del viewport visible (para debug, se dibuja al final para no taparse)
+        if self.camera_config.get('show_grid', False):
+            self.draw_viewport_bounds()
+
         # Remueve clipping para que el HUD se dibuje sin restricciones
         self.screen.set_clip(None)
+
+        # Dibuja coordenadas del mouse (después de remover clipping)
+        if self.camera_config.get('show_grid', False):
+            self.draw_mouse_coords()
 
         # Actualiza FPS
         self.update_fps()

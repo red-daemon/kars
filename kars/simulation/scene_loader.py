@@ -533,6 +533,10 @@ class SceneLoader:
             if 'viewport_y_max_m' in camera_config_raw:
                 camera_config['viewport_y_max_m'] = camera_config_raw['viewport_y_max_m']
 
+        # Campos de rendering opcionales (grillas, etc.)
+        if 'show_grid' in camera_config_raw:
+            camera_config['show_grid'] = camera_config_raw['show_grid']
+
         # Si se especifica viewport_x_max explícitamente, úsalo como límite de remover
         if 'viewport_x_max_m' in camera_config:
             world_config['removal_x_max'] = camera_config['viewport_x_max_m']
