@@ -1,0 +1,134 @@
+{
+  "name": "Five Lanes - Driver Personality Test",
+  "description": "Single road with 5 lanes, 40 km/h speed limit. One agent per lane starting at beginning with lane speed. Tests individual driving behavior and speed variation.",
+  "road": {
+    "roads": [
+      {
+        "id": "road_0",
+        "name": "Five-Lane Street",
+        "speed_limit_kmh": 40.0,
+        "segments": [
+          {
+            "id": "segment_0",
+            "start": [-10, 0],
+            "end": [130, 0],
+            "lanes": [
+              {
+                "id": "lane_0",
+                "width_m": 3.6,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward",
+                "lane_index": 0
+              },
+              {
+                "id": "lane_1",
+                "width_m": 3.6,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward",
+                "lane_index": 1
+              },
+              {
+                "id": "lane_2",
+                "width_m": 3.6,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward",
+                "lane_index": 2
+              },
+              {
+                "id": "lane_3",
+                "width_m": 3.6,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward",
+                "lane_index": 3
+              },
+              {
+                "id": "lane_4",
+                "width_m": 3.6,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward",
+                "lane_index": 4
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": 5001,
+      "lane": "lane_0",
+      "position_s": 5.0,
+      "initial_velocity_ms": 11.11,
+      "time_headway_s": 1.5,
+      "max_accel_ms2": 2.0,
+      "speed_multiplier_mean": 1.0,
+      "speed_multiplier_stddev": 0.15,
+      "critical_gap_m": 5.0,
+      "speed_oscillation_range_kmh": 2.0
+    },
+    {
+      "id": 5002,
+      "lane": "lane_1",
+      "position_s": 5.0,
+      "initial_velocity_ms": 11.11,
+      "time_headway_s": 1.5,
+      "max_accel_ms2": 2.0,
+      "speed_multiplier_mean": 1.0,
+      "speed_multiplier_stddev": 0.15,
+      "critical_gap_m": 5.0,
+      "speed_oscillation_range_kmh": 2.0
+    },
+    {
+      "id": 5003,
+      "lane": "lane_2",
+      "position_s": 5.0,
+      "initial_velocity_ms": 11.11,
+      "time_headway_s": 1.5,
+      "max_accel_ms2": 2.0,
+      "speed_multiplier_mean": 1.0,
+      "speed_multiplier_stddev": 0.15,
+      "critical_gap_m": 5.0,
+      "speed_oscillation_range_kmh": 2.0
+    },
+    {
+      "id": 5004,
+      "lane": "lane_3",
+      "position_s": 5.0,
+      "initial_velocity_ms": 11.11,
+      "time_headway_s": 1.5,
+      "max_accel_ms2": 2.0,
+      "speed_multiplier_mean": 1.0,
+      "speed_multiplier_stddev": 0.15,
+      "critical_gap_m": 5.0,
+      "speed_oscillation_range_kmh": 2.0
+    },
+    {
+      "id": 5005,
+      "lane": "lane_4",
+      "position_s": 5.0,
+      "initial_velocity_ms": 11.11,
+      "time_headway_s": 1.5,
+      "max_accel_ms2": 2.0,
+      "speed_multiplier_mean": 1.0,
+      "speed_multiplier_stddev": 0.15,
+      "critical_gap_m": 5.0,
+      "speed_oscillation_range_kmh": 2.0
+    }
+  ],
+  "world": {
+    "desired_num_agents": 5,
+    "allow_spawning": false
+  },
+  "camera": {
+    "viewport_x_min_m": -10.0,
+    "viewport_x_max_m": 130.0,
+    "viewport_y_min_m": -30.0,
+    "viewport_y_max_m": 30.0
+  }
+}
