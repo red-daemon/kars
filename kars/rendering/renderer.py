@@ -1012,7 +1012,7 @@ class Renderer:
         best_agent = None
         best_dist = threshold_px
 
-        for agent_id, world_pos, heading, speed_kmh, lane_id, s in snapshot.agents:
+        for agent_id, world_pos, heading, speed_kmh, lane_id, s, lateral_offset in snapshot.agents:
             screen_x, screen_y = self.viewport.world_to_screen(world_pos)
             dx = screen_x - mouse_pos[0]
             dy = screen_y - mouse_pos[1]
@@ -1314,14 +1314,13 @@ class Renderer:
             self.draw_grid()
 
         # Dibuja agentes
-        for agent_id, world_pos, heading, speed_kmh, lane_id, s in snapshot.agents:
+        for agent_id, world_pos, heading, speed_kmh, lane_id, s, lateral_offset in snapshot.agents:
             is_selected = (agent_id == self.viewport.follow_agent_id)
 
-            # Recalcula posición desde carril para asegurar alineación perfecta
-            # Siempre usa offset=0 (centro del carril) para evitar desalineación
+            # Recalcula posición desde carril usando el offset (para cambios de carril)
             try:
                 lane = self.world.network.get_lane(lane_id)
-                corrected_world_pos = lane.world_position_at(s, 0.0)
+                corrected_world_pos = lane.world_position_at(s, lateral_offset)
                 corrected_heading = lane.heading_at(s)
                 self.draw_agent(agent_id, corrected_world_pos, corrected_heading, speed_kmh, is_selected, lane_s=s)
             except Exception as e:

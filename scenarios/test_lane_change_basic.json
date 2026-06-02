@@ -1,0 +1,64 @@
+{
+  "name": "Lane Change Animation Test",
+  "description": "Single road with 2 lanes. One agent starts at -6m in lane 0, accelerates to 50 km/h, and changes to lane 1 at 60m.",
+  "road": {
+    "roads": [
+      {
+        "id": "road_0",
+        "name": "Two-Lane Street",
+        "speed_limit_kmh": 50.0,
+        "segments": [
+          {
+            "id": "segment_0",
+            "start": [-10, 0],
+            "end": [140, 0],
+            "lanes": [
+              {
+                "id": "lane_0",
+                "width_m": 3.6,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward",
+                "lane_index": 0
+              },
+              {
+                "id": "lane_1",
+                "width_m": 3.6,
+                "zone": "urban",
+                "lane_type": "normal",
+                "direction": "forward",
+                "lane_index": 1
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": 4001,
+      "lane": "lane_0",
+      "position_s": -6.0,
+      "initial_velocity_ms": 0.0,
+      "time_headway_s": 2.0,
+      "max_accel_ms2": 2.0,
+      "speed_multiplier_mean": 1.0,
+      "speed_multiplier_stddev": 0.05,
+      "critical_gap_m": 5.0,
+      "speed_oscillation_range_kmh": 1.5,
+      "target_lane_at_position_s": 60.0,
+      "target_lane_id_on_signal": "lane_1"
+    }
+  ],
+  "world": {
+    "desired_num_agents": 1,
+    "allow_spawning": false
+  },
+  "camera": {
+    "viewport_x_min_m": -10.0,
+    "viewport_x_max_m": 130.0,
+    "viewport_y_min_m": -20.0,
+    "viewport_y_max_m": 20.0
+  }
+}

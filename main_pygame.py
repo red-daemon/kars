@@ -26,6 +26,9 @@ SCENARIO_SHORTCUTS = {
     '7': 'test_stop_sign',
     '8': 'test_grid_calibration',
     '9': 'test_120m_street',
+    '10': 'test_three_roads_render',
+    '11': 'test_width_calibration',
+    '12': 'test_lane_change_basic',
 }
 
 
@@ -39,7 +42,7 @@ def show_scenario_menu():
         display_name = name.replace('test_', '').replace('_', ' ').title()
         print(f"  [{code}] {display_name}")
 
-    print("\nIngresa código (1-9) o nombre completo, o presiona Enter para default (1):")
+    print("\nIngresa código (1-12) o nombre completo, o presiona Enter para default (1):")
     user_input = input("> ").strip()
 
     # Si es vacío, usa default
@@ -167,7 +170,7 @@ def main(scene_name: str = None):
 
 if __name__ == "__main__":
     # Si se pasa argumento, úsalo como nombre de escena
-    # Si se pasa un código (1-9), convierte a nombre completo
+    # Si se pasa un código (1-12), convierte a nombre completo
     scene_name = None
     if len(sys.argv) > 1:
         arg = sys.argv[1]

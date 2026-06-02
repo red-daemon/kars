@@ -26,7 +26,7 @@ class RenderSnapshot:
     DTO que contiene todo lo necesario para dibujar sin acceder a World.
     """
     # Estado de agentes
-    agents: List[tuple] = field(default_factory=list)  # (id, world_pos, heading, speed_kmh, lane_id, s)
+    agents: List[tuple] = field(default_factory=list)  # (id, world_pos, heading, speed_kmh, lane_id, s, lateral_offset)
 
     # Entorno - Segmentos (multi-carril)
     segments: List[dict] = field(default_factory=list)  # [{segment_id, lane_ids, total_width_m, waypoints, speed_limit_kmh}, ...]
@@ -107,6 +107,7 @@ class World:
         """Registra callbacks en el scheduler."""
         self.scheduler.register_callback(UpdatePhase.PERCEPTION, self._phase_perception)
         self.scheduler.register_callback(UpdatePhase.DECISION, self._phase_decision)
+        self.scheduler.register_callback(UpdatePhase.LANE_CHANGE, self._phase_lane_change)
         self.scheduler.register_callback(UpdatePhase.PHYSICS, self._phase_physics)
         self.scheduler.register_callback(UpdatePhase.ENVIRONMENT, self._phase_environment)
         self.scheduler.register_callback(UpdatePhase.SPATIAL_INDEX, self._phase_spatial_index)
@@ -364,6 +365,23 @@ class World:
     def _phase_decision(self) -> None:
         """FASE 2: Agentes toman decisiones (read-only estado N)."""
         for agent in self.agents.values():
+            # Detecta si debe cambiar de carril según posición programada
+            if (agent.target_lane_at_position_s is not None and
+                agent.target_lane_id_on_signal is not None and
+                agent.target_lane_id is None and  # Aún no está en transición
+                not agent._lane_change_triggered):  # Aún no se triggeró
+                if agent.position_along_lane_s >= agent.target_lane_at_position_s:
+                    # Calcula offset objetivo basado en dirección del cambio
+                    current_lane = self.network.get_lane(agent.current_lane_id)
+                    target_lane = self.network.get_lane(agent.target_lane_id_on_signal)
+
+                    # Dirección: +1 si vamos a la derecha (lane_index aumenta), -1 si a la izquierda
+                    direction = 1 if target_lane.lane_index > current_lane.lane_index else -1
+                    target_offset = direction * current_lane.width_m
+
+                    agent.initiate_lane_change(agent.target_lane_id_on_signal, target_offset)
+                    object.__setattr__(agent, '_lane_change_triggered', True)
+
             # Agentes deshabilitados no deciden
             if agent.is_disabled:
                 agent._desired_accel = 0.0
@@ -375,6 +393,11 @@ class World:
                 agent._desired_accel = agent.decide(perception, self.tick_number)
             else:
                 agent._desired_accel = 0.0
+
+    def _phase_lane_change(self) -> None:
+        """FASE 2.5: Actualiza transiciones de cambio de carril."""
+        for agent in self.agents.values():
+            agent.update_lane_change()
 
     def _phase_physics(self) -> None:
         """FASE 3: Integra fisica (escribe en buffer N+1)."""
@@ -488,12 +511,26 @@ class World:
                     pass
                 continue
 
+            # Durante cambio de carril: actualiza s pero mantén offset interpolado
+            if agent.target_lane_id is not None:
+                try:
+                    lane = self.network.get_lane(agent.current_lane_id)
+                    new_s = lane.find_closest_s(agent.kinematic_state.position)
+                    # Mantén el offset interpolado (no lo recalcules)
+                    agent.set_position_lane(agent.current_lane_id, new_s, agent.lateral_offset)
+                    self.spatial_grid.insert(agent.agent_id, agent.kinematic_state.position)
+                except ValueError:
+                    pass
+                continue
+
             # Sincroniza posicion en carril basada en (x, y) actual
             try:
                 lane = self.network.get_lane(agent.current_lane_id)
 
                 new_s = lane.find_closest_s(agent.kinematic_state.position)
-                new_offset = lane.get_lateral_offset_at(agent.kinematic_state.position, new_s)
+                # Para agentes normales: mantén offset=0 (renderiza siempre al centro)
+                # Solo durante transición se interpola el offset
+                new_offset = 0.0
 
                 # Comprueba fin de carril: elimina cuando el carro sale completamente de pantalla
                 # Usa coordenadas mundo (x) para detectar agentes que han salido completamente
@@ -603,6 +640,7 @@ class World:
                 agent.speed_kmh(),
                 agent.current_lane_id,
                 agent.position_along_lane_s,
+                agent.lateral_offset,
             ))
 
         # Segmentos (multi-carril) - agrupa carriles por segmento

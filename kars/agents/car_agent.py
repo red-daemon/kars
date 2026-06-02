@@ -88,6 +88,16 @@ class CarAgent:
     _stop_sign_wait_initialized: bool = False      # Si ya se sorteó el tiempo
     processed_stop_signs: list = field(default_factory=list)  # IDs de señales ya procesadas
 
+    # Estado de cambio de carril
+    target_lane_id: Optional[str] = None           # Carril objetivo durante cambio de carril
+    lane_change_duration_s: float = 1.5            # Duración total de la animación (segundos)
+    lane_change_elapsed_s: float = 0.0             # Tiempo transcurrido en la transición
+    lane_change_start_offset: float = 0.0          # Offset inicial antes de empezar cambio
+    lane_change_target_offset: float = 0.0         # Offset objetivo al llegar al carril destino
+    target_lane_at_position_s: Optional[float] = None  # Posición en la que cambiar de carril
+    target_lane_id_on_signal: Optional[str] = None     # Carril objetivo cuando se cumple la condición
+    _lane_change_triggered: bool = False           # Si ya se triggeró el cambio programado
+
     # Debug: track de estado anterior para imprimir cambios
     _last_braking_mode: str = "none"   # "none", "cruise", "soft_brake", "hard_brake", "stopped"
     _last_mode_tick: int = 0           # Tick en que cambió el modo
@@ -128,6 +138,53 @@ class CarAgent:
         object.__setattr__(self, 'current_lane_id', lane_id)
         object.__setattr__(self, 'position_along_lane_s', s)
         object.__setattr__(self, 'lateral_offset', lateral_offset)
+
+    def initiate_lane_change(self, target_lane_id: str, target_offset: float, duration_s: float = 1.5) -> None:
+        """Inicia transición suave a otro carril.
+
+        Args:
+            target_lane_id: ID del carril destino
+            target_offset: Offset objetivo (desplazamiento perpendicular al carril destino)
+            duration_s: Duración de la transición en segundos
+        """
+        object.__setattr__(self, 'target_lane_id', target_lane_id)
+        object.__setattr__(self, 'lane_change_duration_s', duration_s)
+        object.__setattr__(self, 'lane_change_elapsed_s', 0.0)
+        object.__setattr__(self, 'lane_change_start_offset', self.lateral_offset)
+        object.__setattr__(self, 'lane_change_target_offset', target_offset)
+
+    def update_lane_change(self) -> None:
+        """Actualiza la transición de carril cada tick.
+
+        Incrementa el offset hacia el objetivo en pasos pequeños.
+        Cuando llega, cambia de carril.
+        """
+        if self.target_lane_id is None:
+            return
+
+        # Incremento direccional: 0.05m/tick, en la dirección del target
+        direction = 1 if self.lane_change_target_offset > 0 else -1
+        increment = 0.05 * direction
+        new_offset = self.lateral_offset + increment
+
+        object.__setattr__(self, 'lateral_offset', new_offset)
+        object.__setattr__(self, 'lane_change_elapsed_s', self.lane_change_elapsed_s + config.TICK_DT_S)
+
+        # Si alcanzó o pasó el objetivo, completa la transición
+        if direction > 0:
+            # Cambio hacia derecha: detente cuando new_offset >= target
+            if new_offset >= self.lane_change_target_offset:
+                object.__setattr__(self, 'current_lane_id', self.target_lane_id)
+                object.__setattr__(self, 'lateral_offset', 0.0)
+                object.__setattr__(self, 'target_lane_id', None)
+                object.__setattr__(self, 'lane_change_elapsed_s', 0.0)
+        else:
+            # Cambio hacia izquierda: detente cuando new_offset <= target
+            if new_offset <= self.lane_change_target_offset:
+                object.__setattr__(self, 'current_lane_id', self.target_lane_id)
+                object.__setattr__(self, 'lateral_offset', 0.0)
+                object.__setattr__(self, 'target_lane_id', None)
+                object.__setattr__(self, 'lane_change_elapsed_s', 0.0)
 
     def set_velocity_world(self, velocity: Vector2):
         """Establece velocidad en coordenadas mundo (x, y).

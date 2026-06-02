@@ -204,6 +204,8 @@ class SceneLoader:
             stop_sign_wait_stddev_s = agent_cfg.get('stop_sign_wait_stddev_s', 0.3)
             stop_sign_buffer_m = agent_cfg.get('stop_sign_buffer_m', 0.5)
             speed_oscillation_range_kmh = agent_cfg.get('speed_oscillation_range_kmh', 0.0)
+            target_lane_at_position_s = agent_cfg.get('target_lane_at_position_s', None)
+            target_lane_id_on_signal = agent_cfg.get('target_lane_id_on_signal', None)
 
             # Muestrea multiplicador de velocidad desde distribución Normal
             speed_mult_mean = agent_cfg.get('speed_multiplier_mean', 1.0)
@@ -247,6 +249,12 @@ class SceneLoader:
 
             object.__setattr__(agent, 'desired_speed_mean_ms', desired_speed_mean_ms)
             object.__setattr__(agent, 'speed_oscillation_range_ms', speed_oscillation_range_ms)
+
+            # Establece parámetros de cambio de carril
+            if target_lane_at_position_s is not None:
+                object.__setattr__(agent, 'target_lane_at_position_s', target_lane_at_position_s)
+            if target_lane_id_on_signal is not None:
+                object.__setattr__(agent, 'target_lane_id_on_signal', target_lane_id_on_signal)
 
             object.__setattr__(
                 agent.idm_behavior,

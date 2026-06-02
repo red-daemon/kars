@@ -8,6 +8,7 @@ class UpdatePhase(Enum):
     """Fases de actualizacion en el tick maestro."""
     PERCEPTION = 1
     DECISION = 2
+    LANE_CHANGE = 2.5
     PHYSICS = 3
     ENVIRONMENT = 4
     SPATIAL_INDEX = 5
@@ -26,6 +27,7 @@ class Scheduler:
         self.phase_order = [
             UpdatePhase.PERCEPTION,
             UpdatePhase.DECISION,
+            UpdatePhase.LANE_CHANGE,
             UpdatePhase.PHYSICS,
             UpdatePhase.ENVIRONMENT,
             UpdatePhase.SPATIAL_INDEX,

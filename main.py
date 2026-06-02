@@ -137,7 +137,7 @@ def demo_render_snapshot():
     print(f"\nAgentes en snapshot:")
     print(f"  ID    Pos(m)    Heading(rad)   Vel(km/h)   Lane")
     print(f"  " + "-" * 50)
-    for agent_id, world_pos, heading, speed_kmh, lane_id, s in snapshot.agents:
+    for agent_id, world_pos, heading, speed_kmh, lane_id, s, lateral_offset in snapshot.agents:
         print(
             f"  {agent_id:2d}    {world_pos.x:7.1f}    {heading:7.3f}      "
             f"{speed_kmh:6.2f}      {lane_id}"
